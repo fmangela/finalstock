@@ -1,4 +1,5 @@
-const { StockPrediction } = require('../models');
+const axios = require('axios');
+const { StockPrediction, StockPrompt, SystemConfig } = require('../models');
 
 exports.getList = async (req, res) => {
   try {
@@ -57,6 +58,110 @@ exports.updateStatus = async (req, res) => {
     if (!prediction) return res.status(404).json({ code: 404, message: '预测记录不存在' });
     await prediction.update({ status, actual_result });
     res.json({ code: 0, data: prediction });
+  } catch (e) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+};
+
+// 执行AI选股：调用大模型，返回匹配股票列表（不保存）
+exports.execute = async (req, res) => {
+  try {
+    const { prompt_id, observation_period } = req.body;
+
+    // 读取大模型配置
+    const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
+    const cfg = {};
+    configs.forEach(c => { cfg[c.config_key] = c.config_value; });
+    const { provider, api_url, api_key, model_name } = cfg;
+    if (!api_key || !model_name) {
+      return res.json({ code: 1, message: '请先在设置中配置大模型参数' });
+    }
+
+    // 读取提示词
+    const prompt = await StockPrompt.findByPk(prompt_id);
+    if (!prompt) return res.status(404).json({ code: 404, message: '提示词不存在' });
+
+    // 构建消息
+    const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求推荐股票，必须以JSON格式返回，格式：{"stocks":[{"code":"股票代码","name":"股票名称","trend":"走势","reason":"推荐理由"}],"analysis":"整体分析"}';
+    const userMsg = prompt.content;
+    
+    // 代理配置
+    const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+    const axiosConfig = {
+      headers: { Authorization: `Bearer ${api_key}`, 'Content-Type': 'application/json' },
+      timeout: 60000
+    };
+    if (proxy) {
+      const { URL } = require('url');
+      const proxyUrl = new URL(proxy);
+      axiosConfig.proxy = { 
+        host: proxyUrl.hostname, 
+        port: parseInt(proxyUrl.port), 
+        protocol: proxyUrl.protocol.replace(':', '') 
+      };
+    }
+
+    const llmRes = await axios.post(api_url, {
+      model: model_name,
+      messages: [
+        { role: 'system', content: systemMsg },
+        { role: 'user', content: userMsg }
+      ],
+      temperature: 0.7
+    }, axiosConfig);
+
+    const rawContent = llmRes.data?.choices?.[0]?.message?.content || '';
+
+    // 解析JSON，兼容markdown代码块包裹
+    let parsed = { stocks: [], analysis: '' };
+    try {
+      const jsonStr = rawContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch (_) {
+      // 解析失败时返回原始内容，stocks为空
+    }
+
+    res.json({
+      code: 0,
+      data: {
+        raw_response: rawContent,
+        stocks: parsed.stocks || [],
+        analysis: parsed.analysis || '',
+        prompt_id: prompt.id,
+        prompt_name: prompt.name,
+        llm_model: model_name,
+        observation_period: observation_period || '一月'
+      }
+    });
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    res.status(500).json({ code: 500, message: msg });
+  }
+};
+
+// 确认选股：将用户勾选的股票批量保存到 stock_predictions
+exports.confirm = async (req, res) => {
+  try {
+    const { stocks, prompt_id, prompt_name, llm_model, llm_response, observation_period } = req.body;
+    if (!Array.isArray(stocks) || stocks.length === 0) {
+      return res.json({ code: 1, message: '请至少选择一只股票' });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const records = await StockPrediction.bulkCreate(stocks.map(s => ({
+      stock_code: s.code,
+      stock_name: s.name,
+      prediction_date: today,
+      reason: s.reason || '',
+      status: 'active',
+      llm_model,
+      prompt_id,
+      prompt_name,
+      llm_response,
+      observation_period: observation_period || '一月'
+    })));
+
+    res.json({ code: 0, data: records });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }

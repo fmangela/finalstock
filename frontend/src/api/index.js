@@ -25,8 +25,23 @@ export const newsApi = {
 export const predictionApi = {
   getList: (params) => http.get('/prediction/list', { params }),
   generate: (data) => http.post('/prediction/generate', data),
+  execute: (data) => http.post('/prediction/execute', data, { timeout: 90000 }),
+  confirm: (data) => http.post('/prediction/confirm', data),
   abandon: (id) => http.post(`/prediction/${id}/abandon`),
   updateStatus: (id, data) => http.put(`/prediction/${id}/status`, data)
+}
+
+export const promptApi = {
+  getList: () => http.get('/prompts/list'),
+  create: (data) => http.post('/prompts', data),
+  update: (id, data) => http.put(`/prompts/${id}`, data),
+  remove: (id) => http.delete(`/prompts/${id}`)
+}
+
+export const llmConfigApi = {
+  get: () => http.get('/llm-config/get'),
+  save: (data) => http.post('/llm-config/save', data),
+  test: () => http.post('/llm-config/test')
 }
 
 export const simulationApi = {

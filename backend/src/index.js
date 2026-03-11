@@ -16,6 +16,8 @@ const predictionRoutes = require('./routes/predictions');
 const simulationRoutes = require('./routes/simulation');
 const analysisRoutes = require('./routes/analysis');
 const configRoutes = require('./routes/config');
+const promptRoutes = require('./routes/prompts');
+const llmConfigRoutes = require('./routes/llmConfig');
 
 app.use('/api/stocks', stockRoutes);
 app.use('/api/news', newsRoutes);
@@ -23,6 +25,8 @@ app.use('/api/prediction', predictionRoutes);
 app.use('/api/simulation', simulationRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/prompts', promptRoutes);
+app.use('/api/llm-config', llmConfigRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

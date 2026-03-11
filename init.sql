@@ -29,6 +29,18 @@ CREATE TABLE IF NOT EXISTS stock_news (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 提示词配置表
+CREATE TABLE IF NOT EXISTS stock_prompts (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(100) NOT NULL,
+  content TEXT NOT NULL,
+  market_type VARCHAR(20) DEFAULT 'A股',
+  push_news BOOLEAN DEFAULT FALSE,
+  push_stock_info BOOLEAN DEFAULT FALSE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- 大模型选股记录
 CREATE TABLE IF NOT EXISTS stock_predictions (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -43,6 +55,10 @@ CREATE TABLE IF NOT EXISTS stock_predictions (
   actual_result TEXT,
   llm_model VARCHAR(50),
   llm_params JSON,
+  observation_period VARCHAR(20),
+  llm_response TEXT,
+  prompt_id INT,
+  prompt_name VARCHAR(100),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -96,9 +112,9 @@ INSERT IGNORE INTO simulation_account (id, initial_capital, current_capital) VAL
 -- 初始化默认配置
 INSERT IGNORE INTO system_configs (config_group, config_key, config_value) VALUES
 ('data_source', 'provider', 'akshare'),
-('llm', 'api_url', ''),
-('llm', 'api_key', ''),
-('llm', 'model', 'gpt-4'),
+('llm_config', 'api_url', ''),
+('llm_config', 'api_key', ''),
+('llm_config', 'model_name', ''),
 ('stock_filter', 'turnover_rate_min', '2'),
 ('stock_filter', 'turnover_rate_max', '20'),
 ('stock_filter', 'pe_min', '5'),

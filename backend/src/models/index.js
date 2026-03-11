@@ -33,8 +33,21 @@ const StockPrediction = sequelize.define('StockPrediction', {
   status: { type: DataTypes.ENUM('active', 'success', 'failed', 'abandoned'), defaultValue: 'active' },
   actual_result: { type: DataTypes.TEXT },
   llm_model: { type: DataTypes.STRING(50) },
-  llm_params: { type: DataTypes.JSON }
+  llm_params: { type: DataTypes.JSON },
+  observation_period: { type: DataTypes.STRING(20) },
+  llm_response: { type: DataTypes.TEXT },
+  prompt_id: { type: DataTypes.INTEGER },
+  prompt_name: { type: DataTypes.STRING(100) }
 }, { tableName: 'stock_predictions', timestamps: true, underscored: true });
+
+const StockPrompt = sequelize.define('StockPrompt', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING(100), allowNull: false },
+  content: { type: DataTypes.TEXT, allowNull: false },
+  market_type: { type: DataTypes.STRING(20), defaultValue: 'A股' },
+  push_news: { type: DataTypes.BOOLEAN, defaultValue: false },
+  push_stock_info: { type: DataTypes.BOOLEAN, defaultValue: false }
+}, { tableName: 'stock_prompts', timestamps: true, underscored: true });
 
 const SimulationAccount = sequelize.define('SimulationAccount', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -70,4 +83,4 @@ const DailyGuidance = sequelize.define('DailyGuidance', {
   analysis_summary: { type: DataTypes.TEXT }
 }, { tableName: 'daily_guidance', timestamps: true, underscored: true });
 
-module.exports = { SystemConfig, StockNews, StockPrediction, SimulationAccount, SimulationPosition, DailyGuidance };
+module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance };

@@ -25,7 +25,7 @@ const StockPrediction = sequelize.define('StockPrediction', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   stock_code: { type: DataTypes.STRING(10), allowNull: false },
   stock_name: { type: DataTypes.STRING(50) },
-  prediction_date: { type: DataTypes.DATEONLY, allowNull: false },
+  stockup_date: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   target_price: { type: DataTypes.DECIMAL(10, 2) },
   stop_loss: { type: DataTypes.DECIMAL(10, 2) },
   confidence: { type: DataTypes.FLOAT },
@@ -83,4 +83,6 @@ const DailyGuidance = sequelize.define('DailyGuidance', {
   analysis_summary: { type: DataTypes.TEXT }
 }, { tableName: 'daily_guidance', timestamps: true, underscored: true });
 
-module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance };
+const AppLog = require('./log');
+
+module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance, AppLog };

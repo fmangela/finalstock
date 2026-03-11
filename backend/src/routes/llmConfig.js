@@ -99,38 +99,68 @@ router.post('/test', async (req, res) => {
   try {
     const { provider, api_url, api_key, model_name } = req.body;
     
-    let url, headers, data;
-    
-    if (provider === 'custom') {
-      url = api_url;
-      headers = { 'Authorization': `Bearer ${api_key}`, 'Content-Type': 'application/json' };
-      data = { model: model_name, messages: [{ role: 'user', content: '你好' }], max_tokens: 50 };
-    } else {
-      const providerConfig = LLM_PROVIDERS[provider];
-      if (!providerConfig) return res.status(400).json({ code: 400, message: '未知提供商' });
-      url = `${providerConfig.baseUrl}/chat/completions`;
-      headers = { 'Authorization': `Bearer ${api_key}`, 'Content-Type': 'application/json' };
-      data = { model: model_name, messages: [{ role: 'user', content: '你好' }], max_tokens: 50 };
+    // 如果没传参数，从已保存的配置读取
+    if (!provider && !api_url) {
+      const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
+      const cfg = {};
+      configs.forEach(c => { cfg[c.config_key] = c.config_value; });
+      Object.assign(req.body, cfg);
     }
     
-    // 设置代理
-    const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
-    const axiosConfig = { headers, timeout: 10000 };
-    if (proxy) {
+    // 从 URL 推断 provider
+    let p = req.body.provider || 'custom';
+    if (!p || p === 'custom') {
+      if (req.body.api_url?.includes('siliconflow')) p = 'siliconflow';
+      else if (req.body.api_url?.includes('qianfan')) p = 'ernie';
+      else if (req.body.api_url?.includes('dashscope')) p = 'qwen';
+      else if (req.body.api_url?.includes('bigmodel')) p = 'glm';
+      else if (req.body.api_url?.includes('hunyuan')) p = 'hunyuan';
+      else if (req.body.api_url?.includes('moonshot')) p = 'moonshot';
+      else if (req.body.api_url?.includes('baichuan')) p = 'baichuan';
+    }
+    
+    const url = req.body.api_url;
+    const key = req.body.api_key;
+    const model = req.body.model_name;
+    
+    if (!key || !model) {
+      return res.status(400).json({ code: 400, message: '请填写API Key和模型名称' });
+    }
+    if (!url) {
+      return res.status(400).json({ code: 400, message: '请填写API地址' });
+    }
+
+    // 构建请求
+    const fullUrl = p !== 'custom' && LLM_PROVIDERS[p] 
+      ? `${LLM_PROVIDERS[p].baseUrl}/chat/completions` 
+      : url;
+    
+    const headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
+    const data = { model: model, messages: [{ role: 'user', content: '你好' }], max_tokens: 50 };
+    
+    // 代理配置 - 硅基流动等国内API直接连接，不走代理
+    const axiosConfig = { headers, timeout: 15000, proxy: false };
+    
+    // 只有在手动配置的自定义URL（非国内主流API）时才考虑代理
+    const isChineseAPI = fullUrl.includes('siliconflow') || fullUrl.includes('qianfan') || fullUrl.includes('dashscope') || fullUrl.includes('bigmodel') || fullUrl.includes('hunyuan') || fullUrl.includes('moonshot') || fullUrl.includes('baichuan');
+    
+    if (!isChineseAPI && (process.env.HTTP_PROXY || process.env.HTTPS_PROXY)) {
       const { URL } = require('url');
-      const proxyUrl = new URL(proxy);
+      const proxyUrl = new URL(process.env.HTTP_PROXY || process.env.HTTPS_PROXY);
       axiosConfig.proxy = { host: proxyUrl.hostname, port: parseInt(proxyUrl.port), protocol: proxyUrl.protocol.replace(':', '') };
     }
     
-    const response = await axios.post(url, data, axiosConfig);
+    const response = await axios.post(fullUrl, data, axiosConfig);
     
     if (response.data?.choices?.length > 0) {
       res.json({ code: 0, message: '连接成功', data: response.data.choices[0].message.content });
     } else {
-      res.json({ code: 0, message: '连接成功，但无返回内容' });
+      res.json({ code: 0, message: '连接成功，但无返回内容', data: response.data });
     }
   } catch (e) {
-    res.status(500).json({ code: 500, message: e.message });
+    const msg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
+    const debugInfo = { status: e.response?.status, error: e.message };
+    res.status(500).json({ code: 500, message: msg + ' ' + JSON.stringify(debugInfo) });
   }
 });
 

@@ -139,6 +139,57 @@ function start() {
   // 每天凌晨3点清理旧新闻
   cron.schedule('0 3 * * *', cleanOldNews);
   console.log('[Scheduler] 新闻定时清理已启动，每天凌晨3点执行');
+  
+  // 每小时检查股票状态（过期/删除）
+  cron.schedule('0 * * * *', checkExpiredPredictions);
+  console.log('[Scheduler] 选股状态检查已启动，每小时执行');
+}
+
+// 检查并更新过期股票状态
+async function checkExpiredPredictions() {
+  console.log(`[Scheduler] 开始检查选股状态... ${new Date().toLocaleString()}`);
+  try {
+    const { StockPrediction } = require('../models');
+    const now = new Date();
+    
+    // 获取所有活跃的选股记录
+    const activePredictions = await StockPrediction.findAll({
+      where: { status: 'active' }
+    });
+    
+    let expiredCount = 0;
+    let deletedCount = 0;
+    
+    for (const pred of activePredictions) {
+      const stockupDate = new Date(pred.stockup_date);
+      const diffMs = now - stockupDate;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      
+      // 观测周期天数映射
+      const periodDays = {
+        '一周': 7,
+        '一月': 30,
+        '一年': 365
+      };
+      const period = pred.observation_period || '一月';
+      const threshold = periodDays[period] || 30;
+      
+      // 超过观测周期2倍，删除
+      if (diffDays > threshold * 2) {
+        await pred.destroy();
+        deletedCount++;
+      }
+      // 超过观测周期，标记过期
+      else if (diffDays > threshold) {
+        await pred.update({ status: 'expired' });
+        expiredCount++;
+      }
+    }
+    
+    console.log(`[Scheduler] 选股状态检查完成：过期 ${expiredCount} 条，删除 ${deletedCount} 条`);
+  } catch (e) {
+    console.error(`[Scheduler] 选股状态检查失败: ${e.message}`);
+  }
 }
 
 module.exports = { start, reloadNewsSyncSchedule, buildCronExpr };

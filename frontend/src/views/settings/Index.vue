@@ -90,6 +90,31 @@
           </el-form>
         </el-tab-pane>
 
+        <!-- 日志配置 -->
+        <el-tab-pane label="日志配置" name="logs">
+          <el-form label-width="120px" style="max-width:500px">
+            <el-form-item label="启用日志记录">
+              <el-switch v-model="logEnabled" @change="saveLogEnabled" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="danger" @click="clearLogs" :loading="logClearing">清空日志</el-button>
+              <el-button @click="loadLogs" :loading="logsLoading">刷新</el-button>
+            </el-form-item>
+          </el-form>
+          <el-table :data="logs" v-loading="logsLoading" stripe style="width:100%" size="small">
+            <el-table-column prop="created_at" label="时间" width="170">
+              <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
+            </el-table-column>
+            <el-table-column prop="level" label="级别" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.level === 'error' ? 'danger' : 'info'" size="small">{{ row.level }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="source" label="来源" width="100" />
+            <el-table-column prop="message" label="消息" min-width="200" show-overflow-tooltip />
+          </el-table>
+        </el-tab-pane>
+
         <!-- 新闻源 -->
         <el-tab-pane label="新闻源" name="news">
           <el-form :model="configs.news" label-width="130px" style="max-width:600px">
@@ -170,9 +195,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { configApi, llmConfigApi, promptApi } from '@/api'
+import { configApi, llmConfigApi, promptApi, logApi } from '@/api'
 
 const activeTab = ref('data_source')
 const saving = ref(false)
@@ -213,11 +238,17 @@ const saveLlmConfig = async () => {
 const testLlmConfig = async () => {
   testing.value = true
   try {
-    const res = await llmConfigApi.test()
+    // 传递当前表单数据
+    const res = await llmConfigApi.test({
+      provider: llmPreset.value ? llmPreset.value.split('/').pop() || 'custom' : 'custom',
+      api_url: llmForm.value.api_url,
+      api_key: llmForm.value.api_key,
+      model_name: llmForm.value.model_name
+    })
     if (res?.code === 0) ElMessage.success(res.message)
     else ElMessage.error(res?.message || '连接失败')
   } catch (e) {
-    ElMessage.error('请求失败：' + e.message)
+    ElMessage.error('请求失败：' + (e.response?.data?.message || e.message))
   } finally {
     testing.value = false
   }
@@ -334,6 +365,7 @@ const loadConfigs = async () => {
       syncConfig.value.no_end = endTs === 0
       syncConfig.value.end_time = endTs > 0 ? endTs : null
     }
+    if (d.log) logEnabled.value = d.log.enabled === '1'
   }
   if (llmRes?.data) {
     llmForm.value = { api_url: llmRes.data.api_url || '', api_key: llmRes.data.api_key || '', model_name: llmRes.data.model_name || '' }
@@ -377,6 +409,41 @@ const saveNewsSettings = async () => {
     saving.value = false
   }
 }
+
+// Logs
+const logs = ref([])
+const logsLoading = ref(false)
+const logClearing = ref(false)
+const logEnabled = ref(false)
+
+const loadLogs = async () => {
+  logsLoading.value = true
+  try {
+    const res = await logApi.getList()
+    logs.value = res?.data?.list || []
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+const clearLogs = async () => {
+  await ElMessageBox.confirm('确认清空所有日志？', '提示', { type: 'warning' })
+  logClearing.value = true
+  try {
+    await logApi.clear()
+    logs.value = []
+    ElMessage.success('日志已清空')
+  } finally {
+    logClearing.value = false
+  }
+}
+
+const saveLogEnabled = async (val) => {
+  await logApi.saveConfig({ enabled: val })
+  ElMessage.success(val ? '日志记录已启用' : '日志记录已关闭')
+}
+
+watch(activeTab, (tab) => { if (tab === 'logs') loadLogs() })
 
 onMounted(() => { loadConfigs(); loadPrompts() })
 </script>

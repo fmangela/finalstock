@@ -7,7 +7,7 @@ exports.getList = async (req, res) => {
     const where = status ? { status } : {};
     const { count, rows } = await StockPrediction.findAndCountAll({
       where,
-      order: [['prediction_date', 'DESC']],
+      order: [['stockup_date', 'DESC']],
       limit: +pageSize,
       offset: (+page - 1) * +pageSize
     });
@@ -23,7 +23,7 @@ exports.generate = async (req, res) => {
     const prediction = await StockPrediction.create({
       stock_code,
       stock_name,
-      prediction_date: new Date(),
+      stockup_date: new Date(),
       target_price,
       stop_loss,
       confidence,
@@ -93,7 +93,8 @@ exports.execute = async (req, res) => {
       if (newsList.length > 0) {
         userMsg += '\n\n【近期财经要闻】\n';
         newsList.slice(0, 5).forEach(n => {
-          userMsg += `- ${n.pub_date?.slice(0, 16) || ''} ${n.title}\n`;
+          const dateStr = n.pub_date ? (typeof n.pub_date === 'string' ? n.pub_date.slice(0, 16) : new Date(n.pub_date).toISOString().slice(0, 16)) : '';
+          userMsg += `- ${dateStr} ${n.title}\n`;
         });
       }
     }
@@ -117,21 +118,12 @@ exports.execute = async (req, res) => {
     // 构建消息
     const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票，必须以JSON格式返回。';
 
-    // 代理配置
-    const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+    // 代理配置 - 国内API直接禁用代理
     const axiosConfig = {
       headers: { Authorization: `Bearer ${api_key}`, 'Content-Type': 'application/json' },
-      timeout: 60000
+      timeout: 60000,
+      proxy: false
     };
-    if (proxy) {
-      const { URL } = require('url');
-      const proxyUrl = new URL(proxy);
-      axiosConfig.proxy = { 
-        host: proxyUrl.hostname, 
-        port: parseInt(proxyUrl.port), 
-        protocol: proxyUrl.protocol.replace(':', '') 
-      };
-    }
 
     const llmRes = await axios.post(api_url, {
       model: model_name,
@@ -179,21 +171,91 @@ exports.confirm = async (req, res) => {
       return res.json({ code: 1, message: '请至少选择一只股票' });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const records = await StockPrediction.bulkCreate(stocks.map(s => ({
-      stock_code: s.code,
-      stock_name: s.name,
-      prediction_date: today,
-      reason: s.reason || '',
-      status: 'active',
-      llm_model,
-      prompt_id,
-      prompt_name,
-      llm_response,
-      observation_period: observation_period || '一月'
-    })));
+    const now = new Date();
+    const results = [];
+    
+    for (const s of stocks) {
+      // 不管之前状态是什么，都更新为最新选股记录
+      const existing = await StockPrediction.findOne({ 
+        where: { stock_code: s.code }
+      });
+      
+      if (existing) {
+        // 更新所有信息，状态改为进行中(active)
+        await existing.update({
+          stockup_date: now,
+          stock_name: s.name,
+          reason: s.reason || existing.reason,
+          llm_model,
+          prompt_id,
+          prompt_name: prompt_name || existing.prompt_name,
+          llm_response: llm_response || existing.llm_response,
+          observation_period: observation_period || existing.observation_period,
+          status: 'active'  // 无论之前状态是什么，都改为进行中
+        });
+        results.push(existing);
+      } else {
+        // 新增记录
+        const record = await StockPrediction.create({
+          stock_code: s.code,
+          stock_name: s.name,
+          stockup_date: now,
+          reason: s.reason || '',
+          status: 'active',
+          llm_model,
+          prompt_id,
+          prompt_name,
+          llm_response,
+          observation_period: observation_period || '一月'
+        });
+        results.push(record);
+      }
+    }
 
-    res.json({ code: 0, data: records });
+    res.json({ code: 0, data: results });
+  } catch (e) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+};
+
+// 删除单条
+exports.delete = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await StockPrediction.destroy({ where: { id } });
+    res.json({ code: 0, message: '删除成功' });
+  } catch (e) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+};
+
+// 恢复（批量）- 状态改为active，选股时间改为当前
+exports.restore = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.json({ code: 1, message: '请选择要恢复的记录' });
+    }
+    const now = new Date();
+    await StockPrediction.update({
+      status: 'active',
+      stockup_date: now
+    }, { where: { id: ids } });
+    res.json({ code: 0, message: `已恢复 ${ids.length} 条` });
+  } catch (e) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+};
+
+// 批量删除
+exports.batchDelete = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.json({ code: 1, message: '请选择要删除的记录' });
+    }
+    await StockPrediction.destroy({ where: { id: ids } });
+    res.json({ code: 0, message: `已删除 ${ids.length} 条` });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }

@@ -28,7 +28,10 @@ export const predictionApi = {
   execute: (data) => http.post('/prediction/execute', data, { timeout: 90000 }),
   confirm: (data) => http.post('/prediction/confirm', data),
   abandon: (id) => http.post(`/prediction/${id}/abandon`),
-  updateStatus: (id, data) => http.put(`/prediction/${id}/status`, data)
+  updateStatus: (id, data) => http.put(`/prediction/${id}/status`, data),
+  delete: (id) => http.delete(`/prediction/${id}`),
+  restore: (ids) => http.post('/prediction/restore', { ids }),
+  batchDelete: (ids) => http.post('/prediction/batch-delete', { ids })
 }
 
 export const promptApi = {
@@ -60,4 +63,11 @@ export const configApi = {
   getAll: () => http.get('/config/all'),
   save: (data) => http.post('/config/save', data),
   reloadSync: () => http.post('/config/reload-sync')
+}
+
+export const logApi = {
+  getConfig: () => http.get('/logs/config'),
+  saveConfig: (data) => http.post('/logs/config', data),
+  getList: (params) => http.get('/logs/list', { params }),
+  clear: () => http.delete('/logs/clear')
 }

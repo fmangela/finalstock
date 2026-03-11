@@ -15,12 +15,24 @@
         <el-tab-pane label="进行中" name="active" />
         <el-tab-pane label="成功" name="success" />
         <el-tab-pane label="失败" name="failed" />
-        <el-tab-pane label="已放弃" name="abandoned" />
+        <el-tab-pane label="已放弃" name="abandoned">
+          <template #label>
+            <span>已放弃</span>
+            <el-checkbox v-if="activeTab === 'abandoned'" v-model="selectAll" :indeterminate="isIndeterminate" @change="handleSelectAll" style="margin-left:8px">全选</el-checkbox>
+          </template>
+        </el-tab-pane>
       </el-tabs>
-      <el-table :data="list" v-loading="loading" stripe>
+      <div v-if="activeTab === 'abandoned'" style="margin-bottom:12px">
+        <el-button size="small" type="danger" @click="batchDelete" :disabled="selectedRows.length===0">批量删除</el-button>
+        <el-button size="small" type="success" @click="batchRestore" :disabled="selectedRows.length===0">批量恢复</el-button>
+      </div>
+      <el-table :data="list" v-loading="loading" stripe @selection-change="handleSelectionChange">
+        <el-table-column v-if="activeTab === 'abandoned'" type="selection" width="50" />
         <el-table-column prop="stock_code" label="代码" width="90" />
         <el-table-column prop="stock_name" label="名称" width="100" />
-        <el-table-column prop="prediction_date" label="预测日期" width="110" />
+        <el-table-column label="选股时间" width="170">
+          <template #default="{ row }">{{ new Date(row.stockup_date).toLocaleString() }}</template>
+        </el-table-column>
         <el-table-column prop="observation_period" label="观测周期" width="90" />
         <el-table-column prop="prompt_name" label="提示词" width="120" show-overflow-tooltip />
         <el-table-column prop="llm_model" label="模型" width="120" show-overflow-tooltip />
@@ -33,9 +45,13 @@
           </template>
         </el-table-column>
         <el-table-column prop="reason" label="理由" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <el-button v-if="row.status === 'active'" size="small" type="danger" @click="abandon(row)">放弃</el-button>
+            <template v-else-if="row.status === 'abandoned'">
+              <el-button size="small" type="success" @click="restore(row)">恢复</el-button>
+              <el-button size="small" type="danger" @click="deleteRow(row)">删除</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -121,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { predictionApi, promptApi } from '@/api'
 
@@ -153,6 +169,56 @@ const abandon = async (row) => {
   await ElMessageBox.confirm(`确认放弃 ${row.stock_name} 的预测？`, '提示', { type: 'warning' })
   await predictionApi.abandon(row.id)
   ElMessage.success('已放弃')
+  loadList()
+}
+
+// 已放弃tab的批量选择
+const selectedRows = ref([])
+const selectAll = ref(false)
+
+const handleSelectionChange = (rows) => {
+  selectedRows.value = rows
+}
+
+const isIndeterminate = computed(() => {
+  return selectedRows.value.length > 0 && selectedRows.value.length < list.value.length
+})
+
+const handleSelectAll = (val) => {
+  selectedRows.value = val ? [...list.value] : []
+}
+
+// 删除单条
+const deleteRow = async (row) => {
+  await ElMessageBox.confirm(`确认删除 ${row.stock_name}？`, '提示', { type: 'warning' })
+  await predictionApi.delete(row.id)
+  ElMessage.success('已删除')
+  loadList()
+}
+
+// 恢复单条
+const restore = async (row) => {
+  await predictionApi.restore([row.id])
+  ElMessage.success('已恢复')
+  loadList()
+}
+
+// 批量删除
+const batchDelete = async () => {
+  await ElMessageBox.confirm(`确认删除选中的 ${selectedRows.value.length} 条记录？`, '提示', { type: 'warning' })
+  const ids = selectedRows.value.map(r => r.id)
+  await predictionApi.batchDelete(ids)
+  ElMessage.success('已删除')
+  selectedRows.value = []
+  loadList()
+}
+
+// 批量恢复
+const batchRestore = async () => {
+  const ids = selectedRows.value.map(r => r.id)
+  await predictionApi.restore(ids)
+  ElMessage.success('已恢复')
+  selectedRows.value = []
   loadList()
 }
 

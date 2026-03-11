@@ -188,6 +188,7 @@ const configs = ref({
 const llmForm = ref({ api_url: '', api_key: '', model_name: '' })
 const llmPreset = ref('')
 const llmPresets = [
+  { label: '硅基流动 (SiliconFlow)', value: 'https://api.siliconflow.cn/v1/chat/completions' },
   { label: '百度文心一言', value: 'https://qianfan.baidubce.com/v2/chat/completions' },
   { label: '阿里通义千问', value: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' },
   { label: '智谱GLM', value: 'https://open.bigmodel.cn/api/paas/v4/chat/completions' },

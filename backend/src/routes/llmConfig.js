@@ -4,6 +4,11 @@ const axios = require('axios');
 
 // LLM 提供商配置
 const LLM_PROVIDERS = {
+  'siliconflow': {
+    name: '硅基流动 (SiliconFlow)',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    models: 'Qwen/Qwen2.5-7B-Instruct,Qwen/Qwen2.5-14B-Instruct,Qwen/Qwen2.5-72B-Instruct,THUDG/glm-4-9b-chat,THUDG/glm-4-32k-chat,deepseek-ai/DeepSeek-V2-Chat,deepseek-ai/DeepSeek-Coder-V2-Instruct,meta-llama/Meta-Llama-3.1-70B-Instruct,meta-llama/Meta-Llama-3.1-8B-Instruct'
+  },
   'qwen': {
     name: '阿里通义千问',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',

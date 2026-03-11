@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { StockPrediction, StockPrompt, SystemConfig } = require('../models');
+const { StockPrediction, StockPrompt, StockNews, SystemConfig } = require('../models');
 
 exports.getList = async (req, res) => {
   try {
@@ -81,10 +81,42 @@ exports.execute = async (req, res) => {
     const prompt = await StockPrompt.findByPk(prompt_id);
     if (!prompt) return res.status(404).json({ code: 404, message: '提示词不存在' });
 
-    // 构建消息
-    const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求推荐股票，必须以JSON格式返回，格式：{"stocks":[{"code":"股票代码","name":"股票名称","trend":"走势","reason":"推荐理由"}],"analysis":"整体分析"}';
-    const userMsg = prompt.content;
+    // 构建用户消息，可能包含要闻和股市信息
+    let userMsg = prompt.content;
     
+    // 如果提示词配置了推送要闻，获取最新的财经要闻
+    if (prompt.push_news) {
+      const newsList = await StockNews.findAll({
+        order: [['pub_date', 'DESC']],
+        limit: 10
+      });
+      if (newsList.length > 0) {
+        userMsg += '\n\n【近期财经要闻】\n';
+        newsList.slice(0, 5).forEach(n => {
+          userMsg += `- ${n.pub_date?.slice(0, 16) || ''} ${n.title}\n`;
+        });
+      }
+    }
+    
+    // 如果提示词配置了推送股市信息，获取大盘概览
+    if (prompt.push_stock_info) {
+      try {
+        const DataService = require('../services/DataService');
+        const marketData = await DataService.getMarketOverview();
+        if (marketData) {
+          userMsg += '\n\n【今日大盘概况】\n';
+          userMsg += `上证指数: ${marketData.shIndex?.price?.toFixed(2) || '-'} (${marketData.shIndex?.change_pct?.toFixed(2) || '-'}%)\n`;
+          userMsg += `深证成指: ${marketData.szIndex?.price?.toFixed(2) || '-'} (${marketData.szIndex?.change_pct?.toFixed(2) || '-'}%)\n`;
+          userMsg += `创业板指: ${marketData.cyIndex?.price?.toFixed(2) || '-'} (${marketData.cyIndex?.change_pct?.toFixed(2) || '-'}%)\n`;
+        }
+      } catch (e) {
+        console.error('获取大盘数据失败:', e.message);
+      }
+    }
+
+    // 构建消息
+    const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票，必须以JSON格式返回。';
+
     // 代理配置
     const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
     const axiosConfig = {

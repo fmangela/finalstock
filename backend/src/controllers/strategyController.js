@@ -85,10 +85,20 @@ exports.getInstances = async (req, res) => {
     const where = strategy_id ? { strategy_id } : {};
     const instances = await StrategyInstance.findAll({ 
       where,
-      include: [{ model: BacktestStrategy, as: 'strategy', attributes: ['name', 'strategy_type'] }],
       order: [['use_count', 'DESC'], ['created_at', 'DESC']]
     });
-    res.json({ code: 0, data: instances });
+    // 关联策略名称
+    const strategies = await BacktestStrategy.findAll();
+    const strategyMap = {};
+    strategies.forEach(s => { strategyMap[s.id] = s; });
+    
+    const result = instances.map(i => ({
+      ...i.toJSON(),
+      strategy_name: strategyMap[i.strategy_id]?.name || '',
+      strategy_type: strategyMap[i.strategy_id]?.strategy_type || ''
+    }));
+    
+    res.json({ code: 0, data: result });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }

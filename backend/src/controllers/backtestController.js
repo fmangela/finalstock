@@ -180,16 +180,20 @@ exports.runBacktest = async (req, res) => {
     // 按日期排序
     allData.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // 计算需要向前扩展的天数
+    // 计算需要向前扩展的天数（用于计算指标）
     const maxPreDays = Math.max(long_period, rsi_period, slow_period, boll_period, breakout_period) + 30;
     const startDateObj = new Date(start_date);
     startDateObj.setDate(startDateObj.getDate() - maxPreDays);
     const filterStartDate = startDateObj.toISOString().slice(0, 10);
     
-    // 过滤日期范围
+    // 过滤日期范围（包含用于计算指标的扩展数据）
     const klineData = allData.filter(d => d.date >= filterStartDate && d.date <= end_date);
     
-    if (klineData.length < 30) {
+    // 找到回测实际开始日期在数据中的索引
+    const actualStartIndex = klineData.findIndex(d => d.date >= start_date);
+    const tradeStartIndex = actualStartIndex >= 0 ? actualStartIndex : 0;
+    
+    if (klineData.length - tradeStartIndex < 10) {
       return res.json({ code: 1, message: '数据量不足，无法进行回测' });
     }
 
@@ -202,8 +206,8 @@ exports.runBacktest = async (req, res) => {
     const trades = [];
     const equityCurve = [];
 
-    // 回测交易逻辑
-    for (let i = 1; i < klineData.length; i++) {
+    // 回测交易逻辑（只从回测开始日期计算）
+    for (let i = tradeStartIndex + 1; i < klineData.length; i++) {
       const date = klineData[i].date;
       const price = klineData[i].close;
       const currentValue = capital + shares * price;
@@ -356,31 +360,41 @@ exports.runBacktest = async (req, res) => {
       }
     }
 
-    // 最后一天如果还有持仓，按收盘价卖出
+    // 最后一天如果还有持仓，按收盘价卖出（只在该日期在回测范围内时）
     if (inPosition && klineData.length > 0) {
       const lastData = klineData[klineData.length - 1];
-      const sellAmount = shares * lastData.close;
-      const profit = sellAmount - (shares * avgCost);
-      capital += sellAmount;
-      trades.push({
-        date: lastData.date, type: 'sell', price: parseFloat(lastData.close.toFixed(2)),
-        shares, amount: parseFloat(sellAmount.toFixed(2)),
-        profit: parseFloat(profit.toFixed(2))
-      });
+      // 检查是否在回测期间内（只在回测期间最后一天平仓）
+      if (lastData.date <= end_date) {
+        const sellAmount = shares * lastData.close;
+        const profit = sellAmount - (shares * avgCost);
+        capital += sellAmount;
+        trades.push({
+          date: lastData.date, type: 'sell', price: parseFloat(lastData.close.toFixed(2)),
+          shares, amount: parseFloat(sellAmount.toFixed(2)),
+          profit: parseFloat(profit.toFixed(2))
+        });
+      }
+    }
+
+    // 只保留回测日期范围内的equityCurve
+    const filteredEquityCurve = equityCurve.filter(p => p.date >= start_date && p.date <= end_date);
+    // 添加初始资金点
+    if (filteredEquityCurve.length > 0 && filteredEquityCurve[0].date !== start_date) {
+      filteredEquityCurve.unshift({ date: start_date, value: initial_capital });
     }
 
     // 计算指标
     const finalCapital = capital;
-    const totalReturn = (finalCapital - initial_capital) / initial_capital;
+    const totalReturn = initial_capital > 0 ? ((finalCapital - initial_capital) / initial_capital) : 0;
     const days = klineData.length;
     const years = days / 250;
-    const annualReturn = Math.pow(1 + totalReturn, 1 / years) - 1;
+    const annualReturn = years > 0 ? (Math.pow(1 + totalReturn, 1 / years) - 1) : 0;
 
     let maxDrawdown = 0;
     let peak = 0;
-    equityCurve.forEach(point => {
+    filteredEquityCurve.forEach(point => {
       if (point.value > peak) peak = point.value;
-      const drawdown = (peak - point.value) / peak;
+      const drawdown = peak > 0 ? (peak - point.value) / peak : 0;
       if (drawdown > maxDrawdown) maxDrawdown = drawdown;
     });
 
@@ -391,8 +405,11 @@ exports.runBacktest = async (req, res) => {
     const winRate = totalTrades > 0 ? profitTrades / totalTrades : 0;
 
     const returns = [];
-    for (let i = 1; i < equityCurve.length; i++) {
-      returns.push((equityCurve[i].value - equityCurve[i-1].value) / equityCurve[i-1].value);
+    for (let i = 1; i < filteredEquityCurve.length; i++) {
+      const prevVal = filteredEquityCurve[i-1].value;
+      if (prevVal > 0) {
+        returns.push((filteredEquityCurve[i].value - prevVal) / prevVal);
+      }
     }
     const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
     const stdReturn = Math.sqrt(returns.length > 0 ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length : 0);
@@ -425,10 +442,10 @@ exports.runBacktest = async (req, res) => {
       loss_trades: lossTrades,
       sharpe_ratio: sharpeRatio,
       trades_json: trades,
-      equity_curve: equityCurve,
+      equity_curve: filteredEquityCurve,
       kline_data: klineForChart,
-      buy_points: buyPoints,
-      sell_points: sellPoints,
+      buy_points: buyPoints.filter(b => b.date >= start_date && b.date <= end_date),
+      sell_points: sellPoints.filter(s => s.date >= start_date && s.date <= end_date),
       ma5: klineMa5.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null),
       ma20: klineMa20.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null),
       // 策略信息

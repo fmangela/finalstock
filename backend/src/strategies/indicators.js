@@ -148,20 +148,26 @@ const calculateBOLL = (prices, period = 20, stdDev = 2) => {
 };
 
 // 突破策略：计算N日高低点
-const calculateBreakout = (prices, period = 20) => {
+// 使用最高价和最低价来计算，而不是收盘价
+const calculateBreakout = (prices, period = 20, klineData = null) => {
   const highs = [];
   const lows = [];
+  
+  // 如果有K线数据，使用最高价和最低价
+  const useHL = klineData && klineData.length === prices.length;
   
   for (let i = 0; i < prices.length; i++) {
     if (i < period - 1) {
       highs.push(null);
       lows.push(null);
     } else {
-      let maxPrice = prices[i];
-      let minPrice = prices[i];
+      let maxPrice = useHL ? klineData[i].high : prices[i];
+      let minPrice = useHL ? klineData[i].low : prices[i];
       for (let j = 1; j < period; j++) {
-        maxPrice = Math.max(maxPrice, prices[i - j]);
-        minPrice = Math.min(minPrice, prices[i - j]);
+        const prevHigh = useHL ? klineData[i - j].high : prices[i - j];
+        const prevLow = useHL ? klineData[i - j].low : prices[i - j];
+        maxPrice = Math.max(maxPrice, prevHigh);
+        minPrice = Math.min(minPrice, prevLow);
       }
       highs.push(maxPrice);
       lows.push(minPrice);
@@ -173,11 +179,12 @@ const calculateBreakout = (prices, period = 20) => {
 
 /**
  * 预计算所有指标数据
- * @param {Array} prices - 价格数组
+ * @param {Array} prices - 价格数组(收盘价)
  * @param {Object} params - 策略参数
+ * @param {Array} klineData - 可选，完整K线数据用于计算突破高低点
  * @returns {Object} 包含所有指标的data对象
  */
-const calculateAllIndicators = (prices, params) => {
+const calculateAllIndicators = (prices, params, klineData = null) => {
   const {
     short_period = 5,
     long_period = 20,
@@ -217,8 +224,8 @@ const calculateAllIndicators = (prices, params) => {
   data.bollMiddle = bollResult.middle;
   data.bollLower = bollResult.lower;
 
-  // Breakout
-  const breakoutResult = calculateBreakout(prices, breakout_period);
+  // Breakout - 传入klineData以使用真实的高低价
+  const breakoutResult = calculateBreakout(prices, breakout_period, klineData);
   data.breakoutHighs = breakoutResult.highs;
   data.breakoutLows = breakoutResult.lows;
 

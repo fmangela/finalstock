@@ -53,13 +53,13 @@ exports.runBacktest = async (req, res) => {
     // 提取价格数据
     const prices = klineData.map(k => k.close);
     
-    // 使用策略模块预计算所有指标
+    // 使用策略模块预计算所有指标（传入klineData用于计算突破高低点）
     const indicatorParams = {
       short_period, long_period, rsi_period,
       fast_period, slow_period, signal_period,
       boll_period, std_dev, breakout_period
     };
-    const data = calculateAllIndicators(prices, indicatorParams);
+    const data = calculateAllIndicators(prices, indicatorParams, klineData);
 
     // 回测
     let capital = initial_capital;

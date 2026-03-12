@@ -67,10 +67,16 @@ exports.runBacktest = async (req, res) => {
     let avgCost = 0;
     let lastBuyShares = 0;
     const trades = [];
+    const equityCurve = [];
+    const buyPoints = [];
+    const sellPoints = [];
 
     for (let i = 1; i < klineData.length; i++) {
       const date = klineData[i].date;
       const price = klineData[i].close;
+      
+      // 记录权益曲线
+      equityCurve.push({ date, value: parseFloat((capital + totalShares * price).toFixed(2)) });
       
       let shouldBuy = false;
       let shouldSell = false;
@@ -112,6 +118,7 @@ exports.runBacktest = async (req, res) => {
             shares, amount: parseFloat(cost.toFixed(2)),
             account_balance: parseFloat(capital.toFixed(2))
           });
+          buyPoints.push({ date, price });
         }
       }
 
@@ -139,6 +146,7 @@ exports.runBacktest = async (req, res) => {
             price_change: buyTrade ? parseFloat(((price - buyTrade.price) / buyTrade.price * 100).toFixed(2)) : 0,
             sell_reason: '信号触发'
           });
+          sellPoints.push({ date, price });
           totalShares = 0;
         }
         inPosition = false;
@@ -171,12 +179,25 @@ exports.runBacktest = async (req, res) => {
     const winTrades = sellTrades.filter(t => t.profit > 0);
     const winRate = sellTrades.length > 0 ? (winTrades.length / sellTrades.length) * 100 : 0;
 
+    // 准备K线图表数据
+    const klineForChart = klineData.map(k => ({
+      date: k.date, open: k.open, close: k.close, high: k.high, low: k.low, volume: k.volume
+    }));
+    const ma5ForChart = ma5.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null);
+    const ma20ForChart = ma20.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null);
+
     const result = await BacktestResult.create({
       stock_code, stock_name, start_date, end_date,
       initial_capital, final_capital: finalCapital,
       total_return: totalReturn,
       strategy_id, strategy_params_json: params,
       trades_json: trades,
+      equity_curve: equityCurve,
+      kline_data: klineForChart,
+      buy_points: buyPoints,
+      sell_points: sellPoints,
+      ma5: ma5ForChart,
+      ma20: ma20ForChart,
       total_trades: sellTrades.length,
       profit_trades: winTrades.length,
       loss_trades: sellTrades.length - winTrades.length,

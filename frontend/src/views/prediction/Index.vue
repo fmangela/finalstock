@@ -10,7 +10,7 @@
           </div>
         </div>
       </template>
-      <el-tabs v-model="activeTab" @tab-change="loadList">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="全部" name="" />
         <el-tab-pane label="进行中" name="active" />
         <el-tab-pane label="成功" name="success" />
@@ -26,20 +26,20 @@
         <el-button size="small" type="danger" @click="batchDelete" :disabled="selectedRows.length===0">批量删除</el-button>
         <el-button size="small" type="success" @click="batchRestore" :disabled="selectedRows.length===0">批量恢复</el-button>
       </div>
-      <el-table :data="list" v-loading="loading" stripe @selection-change="handleSelectionChange">
+      <el-table :data="list" v-loading="loading" stripe @selection-change="handleSelectionChange" @sort-change="handleSortChange">
         <el-table-column v-if="activeTab === 'abandoned'" type="selection" width="50" />
-        <el-table-column prop="stock_code" label="代码" width="90" />
-        <el-table-column prop="stock_name" label="名称" width="100" />
-        <el-table-column label="选股时间" width="170">
+        <el-table-column prop="stock_code" label="代码" width="90" sortable="custom" />
+        <el-table-column prop="stock_name" label="名称" width="100" sortable="custom" />
+        <el-table-column prop="stockup_date" label="选股时间" width="170" sortable="custom">
           <template #default="{ row }">{{ new Date(row.stockup_date).toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="observation_period" label="观测周期" width="90" />
-        <el-table-column prop="prompt_name" label="提示词" width="120" show-overflow-tooltip />
-        <el-table-column prop="llm_model" label="模型" width="120" show-overflow-tooltip />
-        <el-table-column prop="confidence" label="置信度" width="90">
+        <el-table-column prop="observation_period" label="观测周期" width="90" sortable="custom" />
+        <el-table-column prop="prompt_name" label="提示词" width="120" show-overflow-tooltip sortable="custom" />
+        <el-table-column prop="llm_model" label="模型" width="120" show-overflow-tooltip sortable="custom" />
+        <el-table-column prop="confidence" label="置信度" width="90" sortable="custom">
           <template #default="{ row }">{{ row.confidence != null ? (row.confidence * 100).toFixed(0) + '%' : '-' }}</template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90">
+        <el-table-column prop="status" label="状态" width="90" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
@@ -147,6 +147,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const activeTab = ref('')
+const sortField = ref('')
+const sortOrder = ref('')
 const addDialogVisible = ref(false)
 const submitting = ref(false)
 const form = ref({ stock_code: '', stock_name: '', target_price: 0, stop_loss: 0, confidence: 0.7, llm_model: '', reason: '' })
@@ -157,12 +159,32 @@ const statusLabel = (s) => ({ active: '进行中', success: '成功', failed: '�
 const loadList = async () => {
   loading.value = true
   try {
-    const res = await predictionApi.getList({ status: activeTab.value, page: page.value, pageSize: pageSize.value })
+    const res = await predictionApi.getList({ 
+      status: activeTab.value, 
+      page: page.value, 
+      pageSize: pageSize.value,
+      sortField: sortField.value,
+      sortOrder: sortOrder.value
+    })
     list.value = res?.data?.list || []
     total.value = res?.data?.total || 0
   } finally {
     loading.value = false
   }
+}
+
+const handleSortChange = ({ prop, order }) => {
+  sortField.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadList()
+}
+
+const handleTabChange = () => {
+  sortField.value = ''
+  sortOrder.value = ''
+  page.value = 1
+  loadList()
 }
 
 const abandon = async (row) => {

@@ -11,8 +11,8 @@ exports.getList = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { name, content, market_type, push_news, push_stock_info } = req.body;
-    const prompt = await StockPrompt.create({ name, content, market_type, push_news, push_stock_info });
+    const { name, content, market_type, push_news, push_stock_info, output_format } = req.body;
+    const prompt = await StockPrompt.create({ name, content, market_type, push_news, push_stock_info, output_format });
     res.json({ code: 0, data: prompt });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
@@ -24,8 +24,8 @@ exports.update = async (req, res) => {
     const { id } = req.params;
     const prompt = await StockPrompt.findByPk(id);
     if (!prompt) return res.status(404).json({ code: 404, message: '提示词不存在' });
-    const { name, content, market_type, push_news, push_stock_info } = req.body;
-    await prompt.update({ name, content, market_type, push_news, push_stock_info });
+    const { name, content, market_type, push_news, push_stock_info, output_format } = req.body;
+    await prompt.update({ name, content, market_type, push_news, push_stock_info, output_format });
     res.json({ code: 0, data: prompt });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });

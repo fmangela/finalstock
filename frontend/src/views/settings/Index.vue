@@ -57,7 +57,13 @@
             <el-table-column prop="push_stock_info" label="推送股市" width="90">
               <template #default="{ row }"><el-tag :type="row.push_stock_info ? 'success' : 'info'" size="small">{{ row.push_stock_info ? '是' : '否' }}</el-tag></template>
             </el-table-column>
-            <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="content" label="内容" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="output_format" label="返回格式" min-width="150">
+              <template #default="{ row }">
+                <span v-if="row.output_format" style="color:#67c23a">已配置</span>
+                <span v-else style="color:#909399">默认</span>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="140">
               <template #default="{ row }">
                 <el-button size="small" @click="openPromptDialog(row)">编辑</el-button>
@@ -172,10 +178,9 @@
     </el-card>
 
     <!-- 提示词编辑弹窗 -->
-    <el-dialog v-model="promptDialogVisible" :title="promptForm.id ? '编辑提示词' : '新增提示词'" width="560px">
+    <el-dialog v-model="promptDialogVisible" :title="promptForm.id ? '编辑提示词' : '新增提示词'" width="640px">
       <el-form :model="promptForm" label-width="100px">
-        <el-form-item label="名称"><el-input v-model="promptForm.name" /></el-form-item>
-        <el-form-item label="内容"><el-input v-model="promptForm.content" type="textarea" :rows="6" /></el-form-item>
+        <el-form-item label="名称"><el-input v-model="promptForm.name" placeholder="提示词名称" /></el-form-item>
         <el-form-item label="匹配股市">
           <el-select v-model="promptForm.market_type">
             <el-option label="A股" value="A股" />
@@ -183,8 +188,24 @@
             <el-option label="美股" value="美股" />
           </el-select>
         </el-form-item>
-        <el-form-item label="推送要闻"><el-switch v-model="promptForm.push_news" /></el-form-item>
-        <el-form-item label="推送股市信息"><el-switch v-model="promptForm.push_stock_info" /></el-form-item>
+        <el-form-item label="推送要闻">
+          <el-switch v-model="promptForm.push_news" />
+          <span style="color:#999;margin-left:8px;font-size:12px">是否在请求时附加最新财经要闻</span>
+        </el-form-item>
+        <el-form-item label="推送股市信息">
+          <el-switch v-model="promptForm.push_stock_info" />
+          <span style="color:#999;margin-left:8px;font-size:12px">是否在请求时附加大盘行情数据</span>
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="promptForm.content" type="textarea" :rows="5" placeholder="输入提示词主体内容，如分析要求、选股条件等" />
+        </el-form-item>
+        <el-form-item label="返回格式">
+          <el-input v-model="promptForm.output_format" type="textarea" :rows="4" placeholder="请输入期望的返回格式要求" />
+          <div style="color:#e6a23c;font-size:12px;margin-top:4px">
+            <el-icon><Warning /></el-icon>
+            此部分为JSON格式要求，修改可能导致解析失败，请谨慎修改
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="promptDialogVisible = false">取消</el-button>
@@ -197,6 +218,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Warning } from '@element-plus/icons-vue'
 import { configApi, llmConfigApi, promptApi, logApi } from '@/api'
 
 const activeTab = ref('data_source')
@@ -259,7 +281,20 @@ const prompts = ref([])
 const promptsLoading = ref(false)
 const promptDialogVisible = ref(false)
 const promptSaving = ref(false)
-const promptForm = ref({ id: null, name: '', content: '', market_type: 'A股', push_news: false, push_stock_info: false })
+// 默认返回格式要求
+const defaultOutputFormat = `【返回格式要求】
+请严格按照以下JSON格式返回，不要包含任何其他内容：
+\`\`\`json
+{
+  "analysis": "简要分析说明（100字以内）",
+  "stocks": [
+    {"code": "股票代码", "name": "股票名称", "trend": "上涨/下跌/横盘", "reason": "推荐理由（50字以内）"}
+  ]
+}
+\`\`\`
+注意：stocks数组最多返回5只股票，必须以JSON格式返回。`;
+
+const promptForm = ref({ id: null, name: '', content: '', market_type: 'A股', push_news: false, push_stock_info: false, output_format: defaultOutputFormat })
 
 const loadPrompts = async () => {
   promptsLoading.value = true
@@ -273,9 +308,17 @@ const loadPrompts = async () => {
 
 const openPromptDialog = (row = null) => {
   if (row) {
-    promptForm.value = { id: row.id, name: row.name, content: row.content, market_type: row.market_type, push_news: row.push_news, push_stock_info: row.push_stock_info }
+    promptForm.value = { 
+      id: row.id, 
+      name: row.name, 
+      content: row.content, 
+      market_type: row.market_type, 
+      push_news: row.push_news, 
+      push_stock_info: row.push_stock_info,
+      output_format: row.output_format || defaultOutputFormat
+    }
   } else {
-    promptForm.value = { id: null, name: '', content: '', market_type: 'A股', push_news: false, push_stock_info: false }
+    promptForm.value = { id: null, name: '', content: '', market_type: 'A股', push_news: false, push_stock_info: false, output_format: defaultOutputFormat }
   }
   promptDialogVisible.value = true
 }

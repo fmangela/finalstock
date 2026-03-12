@@ -1,13 +1,30 @@
 const axios = require('axios');
+const sequelize = require('../config/database');
 const { StockPrediction, StockPrompt, StockNews, SystemConfig } = require('../models');
 
 exports.getList = async (req, res) => {
   try {
-    const { status, page = 1, pageSize = 20 } = req.query;
+    const { status, page = 1, pageSize = 20, sortField, sortOrder } = req.query;
     const where = status ? { status } : {};
+
+    // 排序字段映射，stock_code 需要转数字排序
+    const fieldMap = {
+      stock_code: sequelize.literal('CAST(stock_code AS UNSIGNED)'),
+      stock_name: 'stock_name',
+      stockup_date: 'stockup_date',
+      observation_period: 'observation_period',
+      prompt_name: 'prompt_name',
+      llm_model: 'llm_model',
+      confidence: 'confidence',
+      status: 'status'
+    };
+
+    const orderField = fieldMap[sortField] || 'stockup_date';
+    const orderDirection = sortOrder === 'ascending' ? 'ASC' : 'DESC';
+
     const { count, rows } = await StockPrediction.findAndCountAll({
       where,
-      order: [['stockup_date', 'DESC']],
+      order: [[orderField, orderDirection]],
       limit: +pageSize,
       offset: (+page - 1) * +pageSize
     });
@@ -81,8 +98,8 @@ exports.execute = async (req, res) => {
     const prompt = await StockPrompt.findByPk(prompt_id);
     if (!prompt) return res.status(404).json({ code: 404, message: '提示词不存在' });
 
-    // 构建用户消息，可能包含要闻和股市信息
-    let userMsg = prompt.content;
+    // 构建用户消息：内容 + 要闻 + 股市信息 + 返回格式要求
+    let userMsg = prompt.content || '';
     
     // 如果提示词配置了推送要闻，获取最新的财经要闻
     if (prompt.push_news) {
@@ -115,8 +132,13 @@ exports.execute = async (req, res) => {
       }
     }
 
+    // 添加返回格式要求（重要：放在最后，确保模型按要求格式输出）
+    if (prompt.output_format) {
+      userMsg += '\n\n' + prompt.output_format;
+    }
+
     // 构建消息
-    const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票，必须以JSON格式返回。';
+    const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票。';
 
     // 代理配置 - 国内API直接禁用代理
     const axiosConfig = {

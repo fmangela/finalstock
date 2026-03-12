@@ -46,7 +46,8 @@ const StockPrompt = sequelize.define('StockPrompt', {
   content: { type: DataTypes.TEXT, allowNull: false },
   market_type: { type: DataTypes.STRING(20), defaultValue: 'A股' },
   push_news: { type: DataTypes.BOOLEAN, defaultValue: false },
-  push_stock_info: { type: DataTypes.BOOLEAN, defaultValue: false }
+  push_stock_info: { type: DataTypes.BOOLEAN, defaultValue: false },
+  output_format: { type: DataTypes.TEXT, allowNull: true }
 }, { tableName: 'stock_prompts', timestamps: true, underscored: true });
 
 const SimulationAccount = sequelize.define('SimulationAccount', {
@@ -83,6 +84,41 @@ const DailyGuidance = sequelize.define('DailyGuidance', {
   analysis_summary: { type: DataTypes.TEXT }
 }, { tableName: 'daily_guidance', timestamps: true, underscored: true });
 
+const BacktestConfig = sequelize.define('BacktestConfig', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING(100), allowNull: false },
+  stock_code: { type: DataTypes.STRING(10), allowNull: false },
+  stock_name: { type: DataTypes.STRING(50) },
+  start_date: { type: DataTypes.DATEONLY, allowNull: false },
+  end_date: { type: DataTypes.DATEONLY, allowNull: false },
+  initial_capital: { type: DataTypes.DECIMAL(15, 2), defaultValue: 100000 },
+  buy_strategy: { type: DataTypes.TEXT },
+  sell_strategy: { type: DataTypes.TEXT },
+  params: { type: DataTypes.JSON }
+}, { tableName: 'backtest_configs', timestamps: true, underscored: true });
+
+const BacktestResult = sequelize.define('BacktestResult', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  config_id: { type: DataTypes.INTEGER },
+  stock_code: { type: DataTypes.STRING(10), allowNull: false },
+  stock_name: { type: DataTypes.STRING(50) },
+  start_date: { type: DataTypes.DATEONLY, allowNull: false },
+  end_date: { type: DataTypes.DATEONLY, allowNull: false },
+  initial_capital: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+  final_capital: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+  total_return: { type: DataTypes.DECIMAL(10, 4) },
+  annual_return: { type: DataTypes.DECIMAL(10, 4) },
+  max_drawdown: { type: DataTypes.DECIMAL(10, 4) },
+  win_rate: { type: DataTypes.DECIMAL(10, 4) },
+  total_trades: { type: DataTypes.INTEGER, defaultValue: 0 },
+  profit_trades: { type: DataTypes.INTEGER, defaultValue: 0 },
+  loss_trades: { type: DataTypes.INTEGER, defaultValue: 0 },
+  sharpe_ratio: { type: DataTypes.DECIMAL(10, 4) },
+  trades_json: { type: DataTypes.JSON },
+  equity_curve: { type: DataTypes.JSON },
+  monthly_returns: { type: DataTypes.JSON }
+}, { tableName: 'backtest_results', timestamps: true, underscored: true });
+
 const AppLog = require('./log');
 
-module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance, AppLog };
+module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance, BacktestConfig, BacktestResult, AppLog };

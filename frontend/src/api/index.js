@@ -71,3 +71,15 @@ export const logApi = {
   getList: (params) => http.get('/logs/list', { params }),
   clear: () => http.delete('/logs/clear')
 }
+
+export const backtestApi = {
+  getStocks: () => http.get('/backtest/stocks'),
+  getConfigs: () => http.get('/backtest/configs'),
+  createConfig: (data) => http.post('/backtest/configs', data),
+  updateConfig: (id, data) => http.put(`/backtest/configs/${id}`, data),
+  deleteConfig: (id) => http.delete(`/backtest/configs/${id}`),
+  getResults: (params) => http.get('/backtest/results', { params }),
+  getResult: (id) => http.get(`/backtest/results/${id}`),
+  deleteResult: (id) => http.delete(`/backtest/results/${id}`),
+  run: (data) => http.post('/backtest/run', data, { timeout: 60000 })
+}

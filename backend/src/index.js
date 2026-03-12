@@ -19,6 +19,7 @@ const configRoutes = require('./routes/config');
 const promptRoutes = require('./routes/prompts');
 const llmConfigRoutes = require('./routes/llmConfig');
 const logRoutes = require('./routes/logs');
+const backtestRoutes = require('./routes/backtest');
 
 app.use('/api/stocks', stockRoutes);
 app.use('/api/news', newsRoutes);
@@ -29,6 +30,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/prompts', promptRoutes);
 app.use('/api/llm-config', llmConfigRoutes);
 app.use('/api/logs', logRoutes);
+app.use('/api/backtest', backtestRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

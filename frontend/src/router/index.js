@@ -11,6 +11,7 @@ const routes = [
       { path: 'stock', component: () => import('@/views/stock/Index.vue'), meta: { title: 'A股行情' } },
       { path: 'news', component: () => import('@/views/news/Index.vue'), meta: { title: '市场资讯' } },
       { path: 'prediction', component: () => import('@/views/prediction/Index.vue'), meta: { title: 'LLM选股' } },
+      { path: 'backtest', component: () => import('@/views/backtest/Index.vue'), meta: { title: '股票回测' } },
       { path: 'simulation', component: () => import('@/views/simulation/Index.vue'), meta: { title: '模拟交易' } },
       { path: 'settings', component: () => import('@/views/settings/Index.vue'), meta: { title: '系统设置' } }
     ]

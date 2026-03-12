@@ -106,6 +106,12 @@
         </div>
       </template>
 
+      <!-- K线图表 -->
+      <div v-if="result.kline_data && result.kline_data.length > 0" class="chart-section">
+        <div class="section-title">股票走势与买卖点</div>
+        <div ref="chartRef" style="width: 100%; height: 400px;"></div>
+      </div>
+
       <!-- 核心指标 -->
       <el-row :gutter="20" class="result-stats">
         <el-col :span="6">
@@ -229,15 +235,15 @@
         <el-table-column prop="end_date" label="结束日期" width="120" />
         <el-table-column prop="total_return" label="收益率" width="100">
           <template #default="{ row }">
-            <span :class="row.total_return >= 0 ? 'positive' : 'negative'">{{ row.total_return?.toFixed(2) }}%</span>
+            <span :class="Number(row.total_return) >= 0 ? 'positive' : 'negative'">{{ Number(row.total_return).toFixed(2) }}%</span>
           </template>
         </el-table-column>
         <el-table-column prop="max_drawdown" label="最大回撤" width="100">
-          <template #default="{ row }">{{ row.max_drawdown?.toFixed(2) }}%</template>
+          <template #default="{ row }">{{ Number(row.max_drawdown).toFixed(2) }}%</template>
         </el-table-column>
         <el-table-column prop="total_trades" label="交易次数" width="100" />
         <el-table-column prop="win_rate" label="胜率" width="80">
-          <template #default="{ row }">{{ row.win_rate?.toFixed(0) }}%</template>
+          <template #default="{ row }">{{ Number(row.win_rate).toFixed(0) }}%</template>
         </el-table-column>
         <el-table-column prop="created_at" label="回测时间" width="180">
           <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
@@ -253,7 +259,7 @@
 
     <!-- 选择股票对话框 -->
     <el-dialog v-model="stockDialogVisible" title="选择回测股票" width="500px">
-      <el-tip type="info" style="margin-bottom:12px">请从LLM选股中正常状态的股票选择</el-tip>
+      <el-alert type="info" :closable="false" style="margin-bottom:12px">请从LLM选股中正常状态的股票选择</el-alert>
       <el-table :data="stockList" v-loading="stockLoading" @row-click="selectStock" stripe :height="300" style="cursor:pointer">
         <el-table-column prop="stock_code" label="代码" width="100" />
         <el-table-column prop="stock_name" label="名称" width="120" />
@@ -268,9 +274,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import * as echarts from 'echarts'
 import { backtestApi } from '@/api'
+
+// 图表引用
+const chartRef = ref(null)
+let chartInstance = null
 
 // 表单数据
 const form = ref({
@@ -326,6 +337,9 @@ const openStockDialog = async () => {
   try {
     const res = await backtestApi.getStocks()
     stockList.value = res?.data || []
+  } catch (e) {
+    console.error('获取股票列表失败:', e)
+    stockList.value = []
   } finally {
     stockLoading.value = false
   }
@@ -340,8 +354,13 @@ const selectStock = (row) => {
 
 // 加载配置
 const loadConfigs = async () => {
-  const res = await backtestApi.getConfigs()
-  configList.value = res?.data || []
+  try {
+    const res = await backtestApi.getConfigs()
+    configList.value = res?.data || []
+  } catch (e) {
+    console.error('加载配置失败:', e)
+    configList.value = []
+  }
 }
 
 const loadConfig = async (id) => {
@@ -416,6 +435,10 @@ const runBacktest = async () => {
       result.value = res.data
       ElMessage.success('回测完成')
       loadHistory()
+      // 绑制图表
+      if (res.data.kline_data && res.data.kline_data.length > 0) {
+        setTimeout(renderChart, 100)
+      }
     } else {
       ElMessage.error(res.message || '回测失败')
     }
@@ -432,15 +455,27 @@ const loadHistory = async () => {
   try {
     const res = await backtestApi.getResults({})
     historyResults.value = res?.data || []
+  } catch (e) {
+    console.error('加载历史记录失败:', e)
+    historyResults.value = []
   } finally {
     historyLoading.value = false
   }
 }
 
 const viewResult = async (row) => {
-  const res = await backtestApi.getResult(row.id)
-  if (res.code === 0) {
-    result.value = res.data
+  try {
+    const res = await backtestApi.getResult(row.id)
+    if (res.code === 0) {
+      result.value = res.data
+      // 如果有K线数据则绑制图表
+      if (res.data.kline_data && res.data.kline_data.length > 0) {
+        setTimeout(renderChart, 100)
+      }
+    }
+  } catch (e) {
+    console.error('加载回测结果失败:', e)
+    ElMessage.error('加载回测结果失败')
   }
 }
 
@@ -474,10 +509,170 @@ const initDates = () => {
   form.value.start_date = oneYearAgo.toISOString().slice(0, 10)
 }
 
+// 绑制K线图表
+const renderChart = async () => {
+  if (!result.value || !result.value.kline_data || result.value.kline_data.length === 0) {
+    return
+  }
+
+  await nextTick()
+  
+  if (!chartRef.value) return
+  
+  // 初始化或更新图表
+  if (!chartInstance) {
+    chartInstance = echarts.init(chartRef.value)
+  }
+
+  const klineData = result.value.kline_data
+  const ma5 = result.value.ma5 || []
+  const ma20 = result.value.ma20 || []
+  const buyPoints = result.value.buy_points || []
+  const sellPoints = result.value.sell_points || []
+
+  // 准备K线数据 [open, close, low, high]
+  const ohlcData = klineData.map(k => [k.open, k.close, k.low, k.high])
+  const dates = klineData.map(k => k.date)
+
+  // 构建买卖点标记数据
+  const buyMarkPoints = buyPoints.map(b => {
+    const idx = dates.indexOf(b.date)
+    return { value: b.price, xAxis: idx, yAxis: b.price }
+  })
+  const sellMarkPoints = sellPoints.map(s => {
+    const idx = dates.indexOf(s.date)
+    return { value: s.price, xAxis: idx, yAxis: s.price }
+  })
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    legend: {
+      data: ['K线', 'MA5', 'MA20']
+    },
+    grid: [
+      { left: '10%', right: '10%', height: '50%' },
+      { left: '10%', right: '10%', top: '70%', height: '20%' }
+    ],
+    xAxis: [
+      {
+        type: 'category',
+        data: dates,
+        scale: true,
+        boundaryGap: false
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: dates,
+        scale: true,
+        boundaryGap: false,
+        axisLabel: { show: false }
+      }
+    ],
+    yAxis: [
+      {
+        scale: true,
+        splitArea: { show: true }
+      },
+      {
+        scale: true,
+        gridIndex: 1,
+        splitNumber: 2,
+        axisLabel: { show: false },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false }
+      }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 },
+      { show: true, xAxisIndex: [0, 1], type: 'slider', top: '95%', start: 50, end: 100 }
+    ],
+    series: [
+      {
+        name: 'K线',
+        type: 'candlestick',
+        data: ohlcData,
+        itemStyle: {
+          color: '#ef232a',
+          color0: '#14b143',
+          borderColor: '#ef232a',
+          borderColor0: '#14b143'
+        }
+      },
+      {
+        name: 'MA5',
+        type: 'line',
+        data: ma5.slice(-klineData.length),
+        smooth: true,
+        lineStyle: { opacity: 0.5 },
+        symbol: 'none'
+      },
+      {
+        name: 'MA20',
+        type: 'line',
+        data: ma20.slice(-klineData.length),
+        smooth: true,
+        lineStyle: { opacity: 0.5 },
+        symbol: 'none'
+      },
+      {
+        name: '买入点',
+        type: 'scatter',
+        symbol: 'triangle',
+        symbolSize: 15,
+        itemStyle: { color: '#ff6b6b' },
+        data: buyMarkPoints,
+        markPoint: {
+          data: buyMarkPoints.map(p => ({
+            coord: [p.xAxis, p.yAxis],
+            value: '买',
+            itemStyle: { color: '#67c23a' }
+          }))
+        }
+      },
+      {
+        name: '卖出点',
+        type: 'scatter',
+        symbol: 'triangle',
+        symbolSize: 15,
+        symbolRotate: 180,
+        itemStyle: { color: '#67c23a' },
+        data: sellMarkPoints,
+        markPoint: {
+          data: sellMarkPoints.map((p, idx) => ({
+            coord: [p.xAxis, p.yAxis],
+            value: p.profit > 0 ? '卖+' : '卖-',
+            itemStyle: { color: p.profit > 0 ? '#f56c6c' : '#67c23a' }
+          }))
+        }
+      },
+      {
+        name: '成交量',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: klineData.map(k => k.volume)
+      }
+    ]
+  }
+
+  chartInstance.setOption(option)
+}
+
 onMounted(() => {
   initDates()
   loadConfigs()
   loadHistory()
+  // 窗口大小变化时调整图表
+  window.addEventListener('resize', () => {
+    if (chartInstance) {
+      chartInstance.resize()
+    }
+  })
 })
 </script>
 

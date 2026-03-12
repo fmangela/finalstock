@@ -116,7 +116,12 @@ const BacktestResult = sequelize.define('BacktestResult', {
   sharpe_ratio: { type: DataTypes.DECIMAL(10, 4) },
   trades_json: { type: DataTypes.JSON },
   equity_curve: { type: DataTypes.JSON },
-  monthly_returns: { type: DataTypes.JSON }
+  monthly_returns: { type: DataTypes.JSON },
+  kline_data: { type: DataTypes.JSON },
+  buy_points: { type: DataTypes.JSON },
+  sell_points: { type: DataTypes.JSON },
+  ma5: { type: DataTypes.JSON },
+  ma20: { type: DataTypes.JSON }
 }, { tableName: 'backtest_results', timestamps: true, underscored: true });
 
 const AppLog = require('./log');

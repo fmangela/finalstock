@@ -301,6 +301,37 @@ exports.runBacktest = async (req, res) => {
       return { month, return: parseFloat(((endVal - startVal) / startVal * 100).toFixed(2)) };
     });
 
+    // 准备K线数据用于前端绑图（只保留回测日期范围内的数据）
+    const klineForChart = klineData
+      .filter(k => k.date >= start_date && k.date <= end_date)
+      .map(k => ({
+        date: k.date,
+        open: k.open,
+        close: k.close,
+        high: k.high,
+        low: k.low,
+        volume: k.volume
+      }));
+
+    console.log('klineForChart.length:', klineForChart.length, 'start_date:', start_date, 'end_date:', end_date);
+    console.log('klineData first:', klineData[0]?.date, 'last:', klineData[klineData.length-1]?.date);
+
+    // 计算均线用于图表
+    const klineClosePrices = klineData.map(k => k.close);
+    const klineMa5 = calculateMA(klineData, 5);
+    const klineMa20 = calculateMA(klineData, 20);
+
+    // 标记买卖点
+    const buyPoints = trades.filter(t => t.type === 'buy').map(t => ({
+      date: t.date,
+      price: t.price
+    }));
+    const sellPoints = trades.filter(t => t.type === 'sell').map(t => ({
+      date: t.date,
+      price: t.price,
+      profit: t.profit
+    }));
+
     // 保存回测结果
     const result = await BacktestResult.create({
       config_id: config_id || null,
@@ -320,10 +351,19 @@ exports.runBacktest = async (req, res) => {
       sharpe_ratio: sharpeRatio,
       trades_json: trades,
       equity_curve: equityCurve,
-      monthly_returns: monthlyReturns
+      monthly_returns: monthlyReturns,
+      // 图表数据
+      kline_data: klineForChart,
+      buy_points: buyPoints,
+      sell_points: sellPoints,
+      ma5: klineMa5.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null),
+      ma20: klineMa20.slice(-klineForChart.length).map(v => v ? parseFloat(v.toFixed(2)) : null)
     });
 
-    res.json({ code: 0, data: result });
+    // 构建返回数据
+    const responseData = result.toJSON();
+
+    res.json({ code: 0, data: responseData });
   } catch (e) {
     console.error('回测执行失败:', e);
     res.status(500).json({ code: 500, message: e.message });

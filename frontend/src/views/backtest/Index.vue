@@ -8,7 +8,7 @@
         </div>
       </template>
 
-      <!-- 当前选股和信息 -->
+      <!-- 当前选股 -->
       <div v-if="form.stock_code" class="selected-stock">
         <el-tag type="primary" size="large">{{ form.stock_name }} ({{ form.stock_code }})</el-tag>
         <el-button type="text" @click="openStockDialog">更换股票</el-button>
@@ -16,7 +16,7 @@
       <div v-else class="tip-text">请点击"选择股票"按钮从LLM选股的股票中选择</div>
 
       <!-- 回测参数配置 -->
-      <el-form :model="form" label-width="120px" style="margin-top:20px;max-width:600px">
+      <el-form :model="form" label-width="120px" style="margin-top:20px;max-width:700px">
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="开始日期">
@@ -37,59 +37,140 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="策略参数">
-              <el-select v-model="strategyPreset" placeholder="选择预设策略" clearable @change="applyStrategy" style="width:100%">
-                <el-option label="均值交叉(5/20日)" value="ma_5_20" />
-                <el-option label="均值交叉(10/30日)" value="ma_10_30" />
-                <el-option label="均值交叉(20/60日)" value="ma_20_60" />
+            <el-form-item label="选择策略">
+              <el-select v-model="form.strategy_id" placeholder="请选择策略" style="width:100%" @change="onStrategyChange">
+                <el-option v-for="s in strategyList" :key="s.id" :label="s.name" :value="s.id">
+                  <span>{{ s.name }}</span>
+                  <span style="color:#999;font-size:12px;margin-left:8px">{{ s.category }}</span>
+                </el-option>
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="短期均线">
-              <el-input-number v-model="form.ma_short" :min="1" :max="60" style="width:100%" />
+        <!-- 策略实例选择 -->
+        <el-row :gutter="20" v-if="form.strategy_id">
+          <el-col :span="12">
+            <el-form-item label="策略实例">
+              <el-select v-model="form.strategy_instance_id" placeholder="选择保存的实例" clearable style="width:100%" @change="onInstanceChange">
+                <el-option v-for="ins in instanceList" :key="ins.id" :label="ins.name" :value="ins.id" />
+              </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="长期均线">
-              <el-input-number v-model="form.ma_long" :min="5" :max="120" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="交易仓位">
-              <el-slider v-model="form.position_pct" :min="10" :max="100" show-input />
+          <el-col :span="12" v-if="selectedStrategy">
+            <el-form-item label="实例名称">
+              <el-input v-model="form.instance_name" placeholder="保存为新实例" style="width:100%" />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="止损比例">
-              <el-input-number v-model="form.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="止盈比例">
-              <el-input-number v-model="form.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <!-- 动态策略参数 -->
+        <div v-if="selectedStrategy" class="strategy-params">
+          <div class="params-title">{{ selectedStrategy.name }} 参数配置</div>
+          
+          <!-- 均线策略参数 -->
+          <template v-if="selectedStrategy.strategy_type === 'ma' || selectedStrategy.strategy_type === 'ma_cross'">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="短期均线">
+                  <el-input-number v-model="form.params.short_period" :min="1" :max="60" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="长期均线">
+                  <el-input-number v-model="form.params.long_period" :min="5" :max="120" style="width:100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
 
-        <el-form-item label="配置名称">
-          <el-input v-model="form.config_name" placeholder="用于保存和加载回测配置" />
-          <div style="margin-top:8px">
-            <el-button @click="saveConfig" :loading="savingConfig">保存配置</el-button>
-            <el-select v-model="selectedConfigId" placeholder="加载配置" clearable @change="loadConfig" style="width:200px;margin-left:10px">
-              <el-option v-for="c in configList" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-          </div>
-        </el-form-item>
+          <!-- RSI策略参数 -->
+          <template v-if="selectedStrategy.strategy_type === 'rsi'">
+            <el-row :gutter="20">
+              <el-col :span="8">
+                <el-form-item label="RSI周期">
+                  <el-input-number v-model="form.params.rsi_period" :min="1" :max="30" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="超卖阈值">
+                  <el-input-number v-model="form.params.oversold" :min="10" :max="50" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="超买阈值">
+                  <el-input-number v-model="form.params.overbought" :min="50" :max="90" style="width:100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+
+          <!-- MACD策略参数 -->
+          <template v-if="selectedStrategy.strategy_type === 'macd'">
+            <el-row :gutter="20">
+              <el-col :span="8">
+                <el-form-item label="快线周期">
+                  <el-input-number v-model="form.params.fast_period" :min="1" :max="30" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="慢线周期">
+                  <el-input-number v-model="form.params.slow_period" :min="5" :max="60" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="信号线周期">
+                  <el-input-number v-model="form.params.signal_period" :min="1" :max="20" style="width:100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+
+          <!-- 布林带策略参数 -->
+          <template v-if="selectedStrategy.strategy_type === 'boll'">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="布林带周期">
+                  <el-input-number v-model="form.params.boll_period" :min="5" :max="50" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="标准差倍数">
+                  <el-input-number v-model="form.params.std_dev" :min="1" :max="4" :step="0.5" style="width:100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+
+          <!-- 突破策略参数 -->
+          <template v-if="selectedStrategy.strategy_type === 'breakout'">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="周期">
+                  <el-input-number v-model="form.params.breakout_period" :min="5" :max="60" style="width:100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+
+          <!-- 通用参数：止盈止损 -->
+          <el-divider>止盈止损设置</el-divider>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="止损比例">
+                <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="止盈比例">
+                <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
 
         <el-form-item>
-          <el-button type="primary" @click="runBacktest" :loading="running" :disabled="!form.stock_code || !form.start_date || !form.end_date">
+          <el-button type="primary" @click="runBacktest" :loading="running" :disabled="!form.stock_code || !form.start_date || !form.end_date || !form.strategy_id">
             开始回测
           </el-button>
           <el-button @click="resetForm">重置参数</el-button>
@@ -101,16 +182,10 @@
     <el-card v-if="result" shadow="hover" style="margin-top:16px">
       <template #header>
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span>回测结果 - {{ result.stock_name }} ({{ result.stock_code }})</span>
+          <span>回测结果 - {{ result.stock_name }} ({{ result.stock_code }}) <el-tag size="small" type="success" style="margin-left:8px">{{ selectedStrategy?.name }}</el-tag></span>
           <el-button type="text" @click="result = null">关闭结果</el-button>
         </div>
       </template>
-
-      <!-- K线图表 -->
-      <div v-if="result.kline_data && result.kline_data.length > 0" class="chart-section">
-        <div class="section-title">股票走势与买卖点</div>
-        <div ref="chartRef" style="width: 100%; height: 400px;"></div>
-      </div>
 
       <!-- 核心指标 -->
       <el-row :gutter="20" class="result-stats">
@@ -118,14 +193,14 @@
           <div class="stat-item">
             <div class="stat-label">总收益率</div>
             <div class="stat-value" :class="Number(result.total_return) >= 0 ? 'positive' : 'negative'">
-              {{ Number(result.total_return).toFixed(2) }}%
+              {{ Number(result.total_return || 0).toFixed(2) }}%
             </div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">年化收益率</div>
-            <div class="stat-value" :class="result.annual_return >= 0 ? 'positive' : 'negative'">
+            <div class="stat-value" :class="Number(result.annual_return) >= 0 ? 'positive' : 'negative'">
               {{ Number(result.annual_return || 0).toFixed(2) }}%
             </div>
           </div>
@@ -133,7 +208,7 @@
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">最大回撤</div>
-            <div class="stat-value negative">{{ Number(result.max_drawdown).toFixed(2) }}%</div>
+            <div class="stat-value negative">{{ Number(result.max_drawdown || 0).toFixed(2) }}%</div>
           </div>
         </el-col>
         <el-col :span="6">
@@ -167,13 +242,19 @@
           <div class="stat-item">
             <div class="stat-label">胜率</div>
             <div class="stat-value" :class="Number(result.win_rate) >= 50 ? 'positive' : 'negative'">
-              {{ Number(result.win_rate).toFixed(2) }}%
+              {{ Number(result.win_rate || 0).toFixed(2) }}%
             </div>
           </div>
         </el-col>
       </el-row>
 
-      <!-- 资金变化 -->
+      <!-- K线图表 -->
+      <div v-if="result.kline_data && result.kline_data.length > 0" class="chart-section">
+        <div class="section-title">股票走势与买卖点</div>
+        <div ref="chartRef" style="width: 100%; height: 400px;"></div>
+      </div>
+
+      <!-- 资金曲线 -->
       <div class="chart-section">
         <div class="section-title">资金曲线</div>
         <div class="equity-curve">
@@ -186,7 +267,7 @@
         </div>
         <div class="curve-labels">
           <span>{{ result.start_date }}</span>
-          <span>初始: {{ result.initial_capital }}</span>
+          <span>初始: {{ Number(result.initial_capital || 0).toFixed(0) }}</span>
           <span>最终: {{ Number(result.final_capital || 0).toFixed(0) }}</span>
           <span>{{ result.end_date }}</span>
         </div>
@@ -231,21 +312,21 @@
         <el-table-column prop="stock_name" label="股票" width="120">
           <template #default="{ row }">{{ row.stock_name }} ({{ row.stock_code }})</template>
         </el-table-column>
-        <el-table-column prop="start_date" label="开始日期" width="120" />
-        <el-table-column prop="end_date" label="结束日期" width="120" />
-        <el-table-column prop="total_return" label="收益率" width="100">
+        <el-table-column prop="start_date" label="开始日期" width="100" />
+        <el-table-column prop="end_date" label="结束日期" width="100" />
+        <el-table-column prop="total_return" label="收益率" width="90">
           <template #default="{ row }">
             <span :class="Number(row.total_return || 0) >= 0 ? 'positive' : 'negative'">{{ Number(row.total_return || 0).toFixed(2) }}%</span>
           </template>
         </el-table-column>
-        <el-table-column prop="max_drawdown" label="最大回撤" width="100">
+        <el-table-column prop="max_drawdown" label="最大回撤" width="90">
           <template #default="{ row }">{{ Number(row.max_drawdown || 0).toFixed(2) }}%</template>
         </el-table-column>
-        <el-table-column prop="total_trades" label="交易次数" width="100" />
-        <el-table-column prop="win_rate" label="胜率" width="80">
+        <el-table-column prop="total_trades" label="交易次数" width="80" />
+        <el-table-column prop="win_rate" label="胜率" width="70">
           <template #default="{ row }">{{ Number(row.win_rate || 0).toFixed(0) }}%</template>
         </el-table-column>
-        <el-table-column prop="created_at" label="回测时间" width="180">
+        <el-table-column prop="created_at" label="回测时间" width="160">
           <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
         </el-table-column>
         <el-table-column label="操作" width="120">
@@ -277,7 +358,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as echarts from 'echarts'
-import { backtestApi } from '@/api'
+import { backtestApi, strategyApi } from '@/api'
 
 // 图表引用
 const chartRef = ref(null)
@@ -290,56 +371,121 @@ const form = ref({
   start_date: '',
   end_date: '',
   initial_capital: 100000,
-  ma_short: 5,
-  ma_long: 20,
-  stop_loss_pct: 0.05,
-  take_profit_pct: 0.15,
-  config_name: ''
+  strategy_id: null,
+  strategy_instance_id: null,
+  instance_name: '',
+  params: {
+    short_period: 5,
+    long_period: 20,
+    rsi_period: 14,
+    oversold: 30,
+    overbought: 70,
+    fast_period: 12,
+    slow_period: 26,
+    signal_period: 9,
+    boll_period: 20,
+    std_dev: 2,
+    breakout_period: 20,
+    stop_loss_pct: 0.05,
+    take_profit_pct: 0.15
+  }
 })
-const strategyPreset = ref('')
-const selectedConfigId = ref(null)
 
 // 状态
 const running = ref(false)
-const savingConfig = ref(false)
 const stockDialogVisible = ref(false)
 const stockLoading = ref(false)
 const stockList = ref([])
-const configList = ref([])
+const strategyList = ref([])
+const instanceList = ref([])
 const historyResults = ref([])
 const historyLoading = ref(false)
 
 // 回测结果
 const result = ref(null)
 
-// 计算权益曲线范围
+// 计算属性
+const selectedStrategy = computed(() => {
+  if (!form.value.strategy_id) return null
+  return strategyList.value.find(s => s.id === form.value.strategy_id)
+})
+
 const getEquityCurve = () => {
   const curve = result.value?.equity_curve
   if (!curve || !Array.isArray(curve)) return []
+  // 如果是字符串，尝试解析
+  if (typeof curve === 'string') {
+    try {
+      return JSON.parse(curve)
+    } catch {
+      return []
+    }
+  }
   return curve
 }
+
 const minEquity = computed(() => {
   const curve = getEquityCurve()
   if (curve.length === 0) return 0
   return Math.min(...curve.map(p => p.value))
 })
+
 const maxEquity = computed(() => {
   const curve = getEquityCurve()
   if (curve.length === 0) return 1
   return Math.max(...curve.map(p => p.value))
 })
 
-// 策略预设
-const applyStrategy = (val) => {
-  if (val === 'ma_5_20') {
-    form.value.ma_short = 5
-    form.value.ma_long = 20
-  } else if (val === 'ma_10_30') {
-    form.value.ma_short = 10
-    form.value.ma_long = 30
-  } else if (val === 'ma_20_60') {
-    form.value.ma_short = 20
-    form.value.ma_long = 60
+// 加载策略列表
+const loadStrategies = async () => {
+  const res = await strategyApi.getStrategies()
+  strategyList.value = res?.data || []
+}
+
+// 加载策略实例
+const loadInstances = async () => {
+  const res = await strategyApi.getInstances({})
+  instanceList.value = res?.data || []
+}
+
+// 选择策略变化
+const onStrategyChange = async (strategyId) => {
+  form.value.strategy_instance_id = null
+  form.value.instance_name = ''
+  
+  if (strategyId) {
+    // 获取策略详情和参数
+    const res = await strategyApi.getStrategyDetail(strategyId)
+    if (res.code === 0 && res.data.params) {
+      // 设置默认参数
+      res.data.params.forEach(p => {
+        if (p.param_name === 'short_period') form.value.params.short_period = Number(p.default_value)
+        if (p.param_name === 'long_period') form.value.params.long_period = Number(p.default_value)
+        if (p.param_name === 'period' && res.data.strategy_type === 'rsi') form.value.params.rsi_period = Number(p.default_value)
+        if (p.param_name === 'oversold') form.value.params.oversold = Number(p.default_value)
+        if (p.param_name === 'overbought') form.value.params.overbought = Number(p.default_value)
+        if (p.param_name === 'fast_period') form.value.params.fast_period = Number(p.default_value)
+        if (p.param_name === 'slow_period') form.value.params.slow_period = Number(p.default_value)
+        if (p.param_name === 'signal_period') form.value.params.signal_period = Number(p.default_value)
+        if (p.param_name === 'boll_period') form.value.params.boll_period = Number(p.default_value)
+        if (p.param_name === 'std_dev') form.value.params.std_dev = Number(p.default_value)
+        if (p.param_name === 'breakout_period') form.value.params.breakout_period = Number(p.default_value)
+        if (p.param_name === 'stop_loss_pct') form.value.params.stop_loss_pct = Number(p.default_value)
+        if (p.param_name === 'take_profit_pct') form.value.params.take_profit_pct = Number(p.default_value)
+      })
+    }
+    // 加载该策略的实例
+    const instanceRes = await strategyApi.getInstances({ strategy_id: strategyId })
+    instanceList.value = instanceRes?.data || []
+  }
+}
+
+// 选择实例变化
+const onInstanceChange = async (instanceId) => {
+  if (!instanceId) return
+  const instance = instanceList.value.find(i => i.id === instanceId)
+  if (instance && instance.params_json) {
+    Object.assign(form.value.params, instance.params_json)
   }
 }
 
@@ -350,9 +496,6 @@ const openStockDialog = async () => {
   try {
     const res = await backtestApi.getStocks()
     stockList.value = res?.data || []
-  } catch (e) {
-    console.error('获取股票列表失败:', e)
-    stockList.value = []
   } finally {
     stockLoading.value = false
   }
@@ -365,68 +508,92 @@ const selectStock = (row) => {
   ElMessage.success(`已选择 ${row.stock_name}`)
 }
 
-// 加载配置
-const loadConfigs = async () => {
-  try {
-    const res = await backtestApi.getConfigs()
-    configList.value = res?.data || []
-  } catch (e) {
-    console.error('加载配置失败:', e)
-    configList.value = []
+// 绑制K线图表
+const renderChart = async () => {
+  if (!result.value || !result.value.kline_data || result.value.kline_data.length === 0) {
+    // 尝试解析
+    if (typeof result.value.kline_data === 'string') {
+      try {
+        result.value.kline_data = JSON.parse(result.value.kline_data)
+      } catch {}
+    }
+    if (!result.value.kline_data || result.value.kline_data.length === 0) return
   }
-}
 
-const loadConfig = async (id) => {
-  if (!id) return
-  const config = configList.value.find(c => c.id === id)
-  if (config) {
-    form.value.stock_code = config.stock_code
-    form.value.stock_name = config.stock_name
-    form.value.start_date = config.start_date
-    form.value.end_date = config.end_date
-    form.value.initial_capital = config.initial_capital
-    form.value.ma_short = config.params?.ma_short || 5
-    form.value.ma_long = config.params?.ma_long || 20
-    form.value.stop_loss_pct = config.params?.stop_loss_pct || 0.05
-    form.value.take_profit_pct = config.params?.take_profit_pct || 0.15
-    form.value.config_name = config.name
-    ElMessage.success('配置已加载')
+  await nextTick()
+  if (!chartRef.value) return
+  
+  if (!chartInstance) {
+    chartInstance = echarts.init(chartRef.value)
   }
-}
 
-// 保存配置
-const saveConfig = async () => {
-  if (!form.value.config_name) {
-    ElMessage.warning('请输入配置名称')
-    return
+  let klineData = result.value.kline_data
+  if (typeof klineData === 'string') {
+    try { klineData = JSON.parse(klineData) } catch { return }
   }
-  if (!form.value.stock_code) {
-    ElMessage.warning('请先选择股票')
-    return
+  
+  const ma5 = result.value.ma5 || []
+  const ma20 = result.value.ma20 || []
+  const buyPoints = result.value.buy_points || []
+  const sellPoints = result.value.sell_points || []
+
+  const ohlcData = klineData.map(k => [k.open, k.close, k.low, k.high])
+  const dates = klineData.map(k => k.date)
+
+  const option = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { data: ['K线', 'MA5', 'MA20'] },
+    grid: [
+      { left: '10%', right: '10%', height: '50%' },
+      { left: '10%', right: '10%', top: '70%', height: '20%' }
+    ],
+    xAxis: [
+      { type: 'category', data: dates, scale: true, boundaryGap: false },
+      { type: 'category', gridIndex: 1, data: dates, scale: true, boundaryGap: false, axisLabel: { show: false } }
+    ],
+    yAxis: [
+      { scale: true, splitArea: { show: true } },
+      { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 },
+      { show: true, xAxisIndex: [0, 1], type: 'slider', top: '95%', start: 50, end: 100 }
+    ],
+    series: [
+      {
+        name: 'K线', type: 'candlestick', data: ohlcData,
+        itemStyle: { color: '#ef232a', color0: '#14b143', borderColor: '#ef232a', borderColor0: '#14b143' }
+      },
+      { name: 'MA5', type: 'line', data: ma5.slice(-klineData.length), smooth: true, lineStyle: { opacity: 0.5 }, symbol: 'none' },
+      { name: 'MA20', type: 'line', data: ma20.slice(-klineData.length), smooth: true, lineStyle: { opacity: 0.5 }, symbol: 'none' },
+      { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: klineData.map(k => k.volume) }
+    ]
   }
-  savingConfig.value = true
-  try {
-    await backtestApi.createConfig({
-      name: form.value.config_name,
-      stock_code: form.value.stock_code,
-      stock_name: form.value.stock_name,
-      start_date: form.value.start_date,
-      end_date: form.value.end_date,
-      initial_capital: form.value.initial_capital,
-      buy_strategy: `MA${form.value.ma_short}/${form.value.ma_long}金叉`,
-      sell_strategy: `MA${form.value.ma_short}/${form.value.ma_long}死叉或止盈止损`,
-      params: {
-        ma_short: form.value.ma_short,
-        ma_long: form.value.ma_long,
-        stop_loss_pct: form.value.stop_loss_pct,
-        take_profit_pct: form.value.take_profit_pct
-      }
+
+  // 添加买卖点
+  if (buyPoints.length > 0) {
+    const buyMarks = buyPoints.map(b => {
+      const idx = dates.indexOf(b.date)
+      return idx >= 0 ? { coord: [idx, b.price], value: '买', itemStyle: { color: '#67c23a' } } : null
+    }).filter(Boolean)
+    option.series.push({
+      name: '买入', type: 'effectScatter', symbolSize: 15, data: buyMarks,
+      markPoint: { data: buyMarks }
     })
-    ElMessage.success('配置已保存')
-    loadConfigs()
-  } finally {
-    savingConfig.value = false
   }
+  
+  if (sellPoints.length > 0) {
+    const sellMarks = sellPoints.map(s => {
+      const idx = dates.indexOf(s.date)
+      return idx >= 0 ? { coord: [idx, s.price], value: s.profit > 0 ? '卖+' : '卖-', itemStyle: { color: s.profit > 0 ? '#f56c6c' : '#67c23a' } } : null
+    }).filter(Boolean)
+    option.series.push({
+      name: '卖出', type: 'effectScatter', symbolSize: 15, symbolRotate: 180, data: sellMarks,
+      markPoint: { data: sellMarks }
+    })
+  }
+
+  chartInstance.setOption(option)
 }
 
 // 执行回测
@@ -439,15 +606,28 @@ const runBacktest = async () => {
       start_date: form.value.start_date,
       end_date: form.value.end_date,
       initial_capital: form.value.initial_capital,
-      ma_short: form.value.ma_short,
-      ma_long: form.value.ma_long,
-      stop_loss_pct: form.value.stop_loss_pct,
-      take_profit_pct: form.value.take_profit_pct
+      strategy_id: form.value.strategy_id,
+      strategy_instance_id: form.value.strategy_instance_id,
+      strategy_type: selectedStrategy.value?.strategy_type,
+      params: form.value.params
     })
     if (res.code === 0) {
       result.value = res.data
       ElMessage.success('回测完成')
       loadHistory()
+      
+      // 保存为实例
+      if (form.value.instance_name && selectedStrategy.value) {
+        await strategyApi.createInstance({
+          name: form.value.instance_name,
+          strategy_id: form.value.strategy_id,
+          params_json: form.value.params,
+          description: `${selectedStrategy.value.name} - ${form.value.stock_code}`
+        })
+        ElMessage.success('策略实例已保存')
+        loadInstances()
+      }
+      
       // 绑制图表
       if (res.data.kline_data && res.data.kline_data.length > 0) {
         setTimeout(renderChart, 100)
@@ -462,7 +642,7 @@ const runBacktest = async () => {
   }
 }
 
-// 查看历史结果
+// 加载历史
 const loadHistory = async () => {
   historyLoading.value = true
   try {
@@ -470,7 +650,6 @@ const loadHistory = async () => {
     historyResults.value = res?.data || []
   } catch (e) {
     console.error('加载历史记录失败:', e)
-    historyResults.value = []
   } finally {
     historyLoading.value = false
   }
@@ -481,33 +660,15 @@ const viewResult = async (row) => {
     const res = await backtestApi.getResult(row.id)
     if (res.code === 0) {
       const data = res.data
-      // 解析JSON字符串字段
-      if (typeof data.equity_curve === 'string') {
-        data.equity_curve = JSON.parse(data.equity_curve)
-      }
-      if (typeof data.trades_json === 'string') {
-        data.trades_json = JSON.parse(data.trades_json)
-      }
-      if (typeof data.monthly_returns === 'string') {
-        data.monthly_returns = JSON.parse(data.monthly_returns)
-      }
-      if (typeof data.kline_data === 'string') {
-        data.kline_data = JSON.parse(data.kline_data)
-      }
-      if (typeof data.buy_points === 'string') {
-        data.buy_points = JSON.parse(data.buy_points)
-      }
-      if (typeof data.sell_points === 'string') {
-        data.sell_points = JSON.parse(data.sell_points)
-      }
-      if (typeof data.ma5 === 'string') {
-        data.ma5 = JSON.parse(data.ma5)
-      }
-      if (typeof data.ma20 === 'string') {
-        data.ma20 = JSON.parse(data.ma20)
-      }
+      // 解析JSON
+      if (typeof data.equity_curve === 'string') data.equity_curve = JSON.parse(data.equity_curve)
+      if (typeof data.trades_json === 'string') data.trades_json = JSON.parse(data.trades_json)
+      if (typeof data.kline_data === 'string') data.kline_data = JSON.parse(data.kline_data)
+      if (typeof data.buy_points === 'string') data.buy_points = JSON.parse(data.buy_points)
+      if (typeof data.sell_points === 'string') data.sell_points = JSON.parse(data.sell_points)
+      if (typeof data.ma5 === 'string') data.ma5 = JSON.parse(data.ma5)
+      if (typeof data.ma20 === 'string') data.ma20 = JSON.parse(data.ma20)
       result.value = data
-      // 如果有K线数据则绑制图表
       if (data.kline_data && data.kline_data.length > 0) {
         setTimeout(renderChart, 100)
       }
@@ -525,21 +686,20 @@ const deleteResult = async (row) => {
   loadHistory()
 }
 
-// 重置参数
 const resetForm = () => {
   form.value.start_date = ''
   form.value.end_date = ''
   form.value.initial_capital = 100000
-  form.value.ma_short = 5
-  form.value.ma_long = 20
-  form.value.stop_loss_pct = 0.05
-  form.value.take_profit_pct = 0.15
-  form.value.config_name = ''
-  strategyPreset.value = ''
-  selectedConfigId.value = null
+  form.value.strategy_id = null
+  form.value.strategy_instance_id = null
+  form.value.instance_name = ''
+  form.value.params = {
+    short_period: 5, long_period: 20, rsi_period: 14, oversold: 30, overbought: 70,
+    fast_period: 12, slow_period: 26, signal_period: 9, boll_period: 20, std_dev: 2,
+    breakout_period: 20, stop_loss_pct: 0.05, take_profit_pct: 0.15
+  }
 }
 
-// 默认日期范围
 const initDates = () => {
   const now = new Date()
   const oneYearAgo = new Date(now)
@@ -548,241 +708,30 @@ const initDates = () => {
   form.value.start_date = oneYearAgo.toISOString().slice(0, 10)
 }
 
-// 绑制K线图表
-const renderChart = async () => {
-  if (!result.value || !result.value.kline_data || result.value.kline_data.length === 0) {
-    return
-  }
-
-  await nextTick()
-  
-  if (!chartRef.value) return
-  
-  // 初始化或更新图表
-  if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value)
-  }
-
-  const klineData = result.value.kline_data
-  const ma5 = result.value.ma5 || []
-  const ma20 = result.value.ma20 || []
-  const buyPoints = result.value.buy_points || []
-  const sellPoints = result.value.sell_points || []
-
-  // 准备K线数据 [open, close, low, high]
-  const ohlcData = klineData.map(k => [k.open, k.close, k.low, k.high])
-  const dates = klineData.map(k => k.date)
-
-  // 构建买卖点标记数据
-  const buyMarkPoints = buyPoints.map(b => {
-    const idx = dates.indexOf(b.date)
-    return { value: b.price, xAxis: idx, yAxis: b.price }
-  })
-  const sellMarkPoints = sellPoints.map(s => {
-    const idx = dates.indexOf(s.date)
-    return { value: s.price, xAxis: idx, yAxis: s.price }
-  })
-
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
-    },
-    legend: {
-      data: ['K线', 'MA5', 'MA20']
-    },
-    grid: [
-      { left: '10%', right: '10%', height: '50%' },
-      { left: '10%', right: '10%', top: '70%', height: '20%' }
-    ],
-    xAxis: [
-      {
-        type: 'category',
-        data: dates,
-        scale: true,
-        boundaryGap: false
-      },
-      {
-        type: 'category',
-        gridIndex: 1,
-        data: dates,
-        scale: true,
-        boundaryGap: false,
-        axisLabel: { show: false }
-      }
-    ],
-    yAxis: [
-      {
-        scale: true,
-        splitArea: { show: true }
-      },
-      {
-        scale: true,
-        gridIndex: 1,
-        splitNumber: 2,
-        axisLabel: { show: false },
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { show: false }
-      }
-    ],
-    dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 },
-      { show: true, xAxisIndex: [0, 1], type: 'slider', top: '95%', start: 50, end: 100 }
-    ],
-    series: [
-      {
-        name: 'K线',
-        type: 'candlestick',
-        data: ohlcData,
-        itemStyle: {
-          color: '#ef232a',
-          color0: '#14b143',
-          borderColor: '#ef232a',
-          borderColor0: '#14b143'
-        }
-      },
-      {
-        name: 'MA5',
-        type: 'line',
-        data: ma5.slice(-klineData.length),
-        smooth: true,
-        lineStyle: { opacity: 0.5 },
-        symbol: 'none'
-      },
-      {
-        name: 'MA20',
-        type: 'line',
-        data: ma20.slice(-klineData.length),
-        smooth: true,
-        lineStyle: { opacity: 0.5 },
-        symbol: 'none'
-      },
-      {
-        name: '买入点',
-        type: 'scatter',
-        symbol: 'triangle',
-        symbolSize: 15,
-        itemStyle: { color: '#ff6b6b' },
-        data: buyMarkPoints,
-        markPoint: {
-          data: buyMarkPoints.map(p => ({
-            coord: [p.xAxis, p.yAxis],
-            value: '买',
-            itemStyle: { color: '#67c23a' }
-          }))
-        }
-      },
-      {
-        name: '卖出点',
-        type: 'scatter',
-        symbol: 'triangle',
-        symbolSize: 15,
-        symbolRotate: 180,
-        itemStyle: { color: '#67c23a' },
-        data: sellMarkPoints,
-        markPoint: {
-          data: sellMarkPoints.map((p, idx) => ({
-            coord: [p.xAxis, p.yAxis],
-            value: p.profit > 0 ? '卖+' : '卖-',
-            itemStyle: { color: p.profit > 0 ? '#f56c6c' : '#67c23a' }
-          }))
-        }
-      },
-      {
-        name: '成交量',
-        type: 'bar',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: klineData.map(k => k.volume)
-      }
-    ]
-  }
-
-  chartInstance.setOption(option)
-}
-
 onMounted(() => {
   initDates()
-  loadConfigs()
+  loadStrategies()
+  loadInstances()
   loadHistory()
-  // 窗口大小变化时调整图表
-  window.addEventListener('resize', () => {
-    if (chartInstance) {
-      chartInstance.resize()
-    }
-  })
+  window.addEventListener('resize', () => { if (chartInstance) chartInstance.resize() })
 })
 </script>
 
 <style scoped>
-.selected-stock {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.tip-text {
-  color: #909399;
-  font-size: 14px;
-}
-.result-stats {
-  margin-bottom: 20px;
-}
-.stat-item {
-  text-align: center;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
-.stat-label {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 4px;
-}
-.stat-value {
-  font-size: 20px;
-  font-weight: 600;
-}
+.selected-stock { display: flex; align-items: center; gap: 12px; }
+.tip-text { color: #909399; font-size: 14px; }
+.strategy-params { background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0; }
+.params-title { font-weight: 600; margin-bottom: 12px; color: #303133; }
+.result-stats { margin-bottom: 20px; }
+.stat-item { text-align: center; padding: 12px; background: #f5f7fa; border-radius: 8px; }
+.stat-label { font-size: 13px; color: #909399; margin-bottom: 4px; }
+.stat-value { font-size: 20px; font-weight: 600; }
 .positive { color: #67c23a; }
 .negative { color: #f56c6c; }
-
-.chart-section, .trades-section {
-  margin-top: 20px;
-}
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: #303133;
-}
-
-.equity-curve {
-  position: relative;
-  height: 150px;
-  background: linear-gradient(to bottom, #f0f2f5, #fff);
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-}
-.curve-point {
-  position: absolute;
-  width: 2px;
-  height: 2px;
-  background: #409eff;
-  transform: translateX(-50%);
-}
-.curve-line {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  opacity: 0.3;
-}
-.curve-labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #909399;
-}
+.chart-section, .trades-section { margin-top: 20px; }
+.section-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #303133; }
+.equity-curve { position: relative; height: 150px; background: linear-gradient(to bottom, #f0f2f5, #fff); border: 1px solid #ebeef5; border-radius: 4px; }
+.curve-point { position: absolute; width: 2px; height: 2px; background: #409eff; transform: translateX(-50%); }
+.curve-line { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; opacity: 0.3; }
+.curve-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #909399; }
 </style>

@@ -251,7 +251,11 @@
           <el-button type="primary" @click="runBacktest" :loading="running" :disabled="!form.stock_code || !form.start_date || !form.end_date || !form.strategy_id">
             开始回测
           </el-button>
+          <el-button type="success" @click="saveInstance" :disabled="!form.strategy_id || !form.instance_name" :loading="savingInstance">
+            保存实例
+          </el-button>
           <el-button @click="resetForm">重置参数</el-button>
+          <el-button type="info" @click="openInstanceManageDialog">管理实例</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -455,6 +459,70 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <!-- 策略实例管理对话框 -->
+    <el-dialog v-model="instanceManageVisible" title="策略实例管理" width="800px">
+      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #909399; font-size: 13px;">查看、编辑和删除已保存的策略实例</span>
+        <el-button type="primary" size="small" @click="loadAllInstances">刷新列表</el-button>
+      </div>
+      <el-table :data="allInstances" v-loading="instanceManageLoading" stripe :height="400">
+        <el-table-column prop="name" label="实例名称" width="150" />
+        <el-table-column label="策略类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.strategy_name || '未知策略' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="参数" min-width="200">
+          <template #default="{ row }">
+            <el-tooltip :content="formatParamsTooltip(row.params_json)" placement="top">
+              <span style="cursor: help; color: #409eff;">
+                {{ formatParamsShort(row.params_json) }}
+              </span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column prop="use_count" label="使用次数" width="80" />
+        <el-table-column prop="created_at" label="创建时间" width="160">
+          <template #default="{ row }">
+            {{ row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" @click="editInstance(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="deleteInstance(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <!-- 编辑实例对话框 -->
+    <el-dialog v-model="editInstanceVisible" title="编辑策略实例" width="500px">
+      <el-form :model="editInstanceForm" label-width="100px">
+        <el-form-item label="实例名称">
+          <el-input v-model="editInstanceForm.name" placeholder="请输入实例名称" />
+        </el-form-item>
+        <el-form-item label="策略类型">
+          <el-input :value="editInstanceForm.strategy_name" disabled />
+        </el-form-item>
+        <el-form-item label="参数配置">
+          <div v-if="editInstanceForm.params_json" class="params-display">
+            <div v-for="(value, key) in editInstanceForm.params_json" :key="key" class="param-item">
+              <span class="param-key">{{ formatParamKey(key) }}:</span>
+              <span class="param-value">{{ value }}</span>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="editInstanceForm.description" type="textarea" :rows="2" placeholder="可选描述" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editInstanceVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEditInstance" :loading="savingInstance">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -498,6 +566,7 @@ const form = ref({
 
 // 状态
 const running = ref(false)
+const savingInstance = ref(false)
 const stockDialogVisible = ref(false)
 const stockLoading = ref(false)
 const stockList = ref([])
@@ -505,6 +574,12 @@ const strategyList = ref([])
 const instanceList = ref([])
 const historyResults = ref([])
 const historyLoading = ref(false)
+// 实例管理
+const instanceManageVisible = ref(false)
+const instanceManageLoading = ref(false)
+const allInstances = ref([])
+const editInstanceVisible = ref(false)
+const editInstanceForm = ref({ id: null, name: '', strategy_name: '', strategy_id: null, params_json: {}, description: '' })
 
 // 回测结果
 const result = ref(null)
@@ -824,6 +899,134 @@ const resetForm = () => {
   }
 }
 
+// 保存实例（独立按钮）
+const saveInstance = async () => {
+  if (!form.value.instance_name) {
+    ElMessage.warning('请输入实例名称')
+    return
+  }
+  if (!form.value.strategy_id) {
+    ElMessage.warning('请先选择策略')
+    return
+  }
+  savingInstance.value = true
+  try {
+    await strategyApi.createInstance({
+      name: form.value.instance_name,
+      strategy_id: form.value.strategy_id,
+      params_json: form.value.params,
+      description: `${selectedStrategy.value?.name || ''} 参数配置`
+    })
+    ElMessage.success('策略实例已保存')
+    loadInstances()
+    form.value.instance_name = ''
+  } catch (e) {
+    ElMessage.error('保存实例失败: ' + (e.message || '未知错误'))
+  } finally {
+    savingInstance.value = false
+  }
+}
+
+// 打开实例管理对话框
+const openInstanceManageDialog = async () => {
+  instanceManageVisible.value = true
+  loadAllInstances()
+}
+
+// 加载所有实例
+const loadAllInstances = async () => {
+  instanceManageLoading.value = true
+  try {
+    const res = await strategyApi.getInstances({})
+    allInstances.value = res?.data || []
+  } catch (e) {
+    ElMessage.error('加载实例列表失败')
+  } finally {
+    instanceManageLoading.value = false
+  }
+}
+
+// 格式化参数 tooltip
+const formatParamsTooltip = (params) => {
+  if (!params) return '-'
+  return Object.entries(params).map(([k, v]) => `${formatParamKey(k)}: ${v}`).join(', ')
+}
+
+// 格式化参数简略显示
+const formatParamsShort = (params) => {
+  if (!params) return '-'
+  const entries = Object.entries(params).slice(0, 3)
+  const str = entries.map(([k, v]) => `${formatParamKey(k)}=${v}`).join(', ')
+  if (Object.keys(params).length > 3) {
+    return str + '...'
+  }
+  return str
+}
+
+// 格式化参数 key 为中文
+const formatParamKey = (key) => {
+  const keyMap = {
+    short_period: '短期均线',
+    long_period: '长期均线',
+    rsi_period: 'RSI周期',
+    oversold: '超卖阈值',
+    overbought: '超买阈值',
+    fast_period: '快线周期',
+    slow_period: '慢线周期',
+    signal_period: '信号线周期',
+    boll_period: '布林带周期',
+    std_dev: '标准差倍数',
+    breakout_period: '突破周期',
+    stop_loss_pct: '止损比例',
+    take_profit_pct: '止盈比例'
+  }
+  return keyMap[key] || key
+}
+
+// 编辑实例
+const editInstance = (row) => {
+  editInstanceForm.value = {
+    id: row.id,
+    name: row.name,
+    strategy_name: row.strategy_name || '未知策略',
+    strategy_id: row.strategy_id,
+    params_json: row.params_json ? { ...row.params_json } : {},
+    description: row.description || ''
+  }
+  editInstanceVisible.value = true
+}
+
+// 保存编辑后的实例
+const saveEditInstance = async () => {
+  if (!editInstanceForm.value.name) {
+    ElMessage.warning('请输入实例名称')
+    return
+  }
+  savingInstance.value = true
+  try {
+    await strategyApi.updateInstance(editInstanceForm.value.id, {
+      name: editInstanceForm.value.name,
+      params_json: editInstanceForm.value.params_json,
+      description: editInstanceForm.value.description
+    })
+    ElMessage.success('实例已更新')
+    editInstanceVisible.value = false
+    loadAllInstances()
+  } catch (e) {
+    ElMessage.error('更新实例失败: ' + (e.message || '未知错误'))
+  } finally {
+    savingInstance.value = false
+  }
+}
+
+// 删除实例
+const deleteInstance = async (row) => {
+  await ElMessageBox.confirm(`确认删除策略实例"${row.name}"？`, '提示', { type: 'warning' })
+  await strategyApi.deleteInstance(row.id)
+  ElMessage.success('已删除')
+  loadAllInstances()
+}
+
 const initDates = () => {
   const now = new Date()
   const oneYearAgo = new Date(now)
@@ -869,4 +1072,29 @@ onMounted(() => {
   min-width: 50px;
 }
 
+/* 参数显示样式 */
+.params-display {
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.param-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+.param-item:last-child {
+  border-bottom: none;
+}
+.param-key {
+  color: #909399;
+  font-size: 13px;
+}
+.param-value {
+  color: #303133;
+  font-weight: 500;
+}
 </style>

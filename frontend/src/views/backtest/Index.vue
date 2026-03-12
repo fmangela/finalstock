@@ -16,7 +16,7 @@
       <div v-else class="tip-text">请点击"选择股票"按钮从LLM选股的股票中选择</div>
 
       <!-- 回测参数配置 -->
-      <el-form :model="form" label-width="120px" style="margin-top:20px;max-width:700px">
+      <el-form :model="form" label-width="120px" style="margin-top:20px;max-width:900px">
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="开始日期">
@@ -230,7 +230,10 @@
                     <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </template>
-                <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
+                <div class="input-with-suffix">
+                  <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
+                  <span class="suffix-text">%</span>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -241,7 +244,10 @@
                     <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </template>
-                <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
+                <div class="input-with-suffix">
+                  <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
+                  <span class="suffix-text">%</span>
+                </div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -858,4 +864,32 @@ onMounted(() => {
 .curve-point { position: absolute; width: 2px; height: 2px; background: #409eff; transform: translateX(-50%); }
 .curve-line { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; opacity: 0.3; }
 .curve-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #909399; }
+
+/* 调整 el-input-number 内部输入框宽度 */
+:deep(.el-input-number .el-input__wrapper) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+:deep(.el-input-number .el-input__inner) {
+  text-align: center;
+  min-width: 50px;
+}
+
+/* 止盈止损 % 后缀样式 */
+.input-with-suffix {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.input-with-suffix .el-input-number {
+  width: 100% !important;
+}
+.suffix-text {
+  position: absolute;
+  right: 28px;
+  color: #909399;
+  font-size: 14px;
+  pointer-events: none;
+}
 </style>

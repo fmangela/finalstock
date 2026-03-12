@@ -199,9 +199,10 @@ exports.runBacktest = async (req, res) => {
 
     // 初始化资金和持仓
     let capital = parseFloat(initial_capital);
-    let shares = 0;
+    let totalShares = 0;  // 使用totalShares替代shares，更清晰
     let inPosition = false;
     let avgCost = 0;
+    let lastBuyShares = 0;  // 记录最后一次买入的股数
 
     const trades = [];
     const equityCurve = [];
@@ -210,7 +211,7 @@ exports.runBacktest = async (req, res) => {
     for (let i = tradeStartIndex + 1; i < klineData.length; i++) {
       const date = klineData[i].date;
       const price = klineData[i].close;
-      const currentValue = capital + shares * price;
+      const currentValue = capital + totalShares * price;
       equityCurve.push({ date, value: parseFloat(currentValue.toFixed(2)) });
 
       let shouldBuy = false;
@@ -336,6 +337,8 @@ exports.runBacktest = async (req, res) => {
           const cost = newShares * price;
           capital -= cost;
           avgCost = price;
+          totalShares = newShares;
+          lastBuyShares = newShares;
           inPosition = true;
           trades.push({
             date, type: 'buy', price: parseFloat(price.toFixed(2)),
@@ -344,35 +347,40 @@ exports.runBacktest = async (req, res) => {
         }
       }
 
-      // 执行卖出
+      // 执行卖出 - 使用totalShares确保有正确的股数
       if (shouldSell && inPosition) {
-        const sellAmount = shares * price;
-        const profit = sellAmount - (shares * avgCost);
-        capital += sellAmount;
-        trades.push({
-          date, type: 'sell', price: parseFloat(price.toFixed(2)),
-          shares, amount: parseFloat(sellAmount.toFixed(2)),
-          profit: parseFloat(profit.toFixed(2))
-        });
-        shares = 0;
+        const sellShares = totalShares > 0 ? totalShares : lastBuyShares;
+        if (sellShares > 0) {
+          const sellAmount = sellShares * price;
+          const profit = sellAmount - (sellShares * avgCost);
+          capital += sellAmount;
+          trades.push({
+            date, type: 'sell', price: parseFloat(price.toFixed(2)),
+            shares: sellShares, amount: parseFloat(sellAmount.toFixed(2)),
+            profit: parseFloat(profit.toFixed(2))
+          });
+          totalShares = 0;
+        }
         inPosition = false;
         avgCost = 0;
       }
     }
 
-    // 最后一天如果还有持仓，按收盘价卖出（只在该日期在回测范围内时）
+    // 最后一天如果还有持仓，按收盘价卖出
     if (inPosition && klineData.length > 0) {
       const lastData = klineData[klineData.length - 1];
-      // 检查是否在回测期间内（只在回测期间最后一天平仓）
       if (lastData.date <= end_date) {
-        const sellAmount = shares * lastData.close;
-        const profit = sellAmount - (shares * avgCost);
-        capital += sellAmount;
-        trades.push({
-          date: lastData.date, type: 'sell', price: parseFloat(lastData.close.toFixed(2)),
-          shares, amount: parseFloat(sellAmount.toFixed(2)),
-          profit: parseFloat(profit.toFixed(2))
-        });
+        const sellShares = totalShares > 0 ? totalShares : lastBuyShares;
+        if (sellShares > 0) {
+          const sellAmount = sellShares * lastData.close;
+          const profit = sellAmount - (sellShares * avgCost);
+          capital += sellAmount;
+          trades.push({
+            date: lastData.date, type: 'sell', price: parseFloat(lastData.close.toFixed(2)),
+            shares: sellShares, amount: parseFloat(sellAmount.toFixed(2)),
+            profit: parseFloat(profit.toFixed(2))
+          });
+        }
       }
     }
 

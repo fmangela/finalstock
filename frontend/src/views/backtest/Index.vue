@@ -414,9 +414,23 @@
     <!-- 历史回测记录 -->
     <el-card shadow="hover" style="margin-top:16px">
       <template #header>
-        <span>历史回测记录</span>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span>历史回测记录</span>
+          <div>
+            <el-button size="small" @click="handleSelectAll" :disabled="paginatedHistory.length === 0">
+              {{ isAllSelected ? '取消全选' : '全选' }}
+            </el-button>
+            <el-button size="small" type="danger" @click="handleBatchDelete" :disabled="selectedRows.length === 0">
+              批量删除
+            </el-button>
+            <el-button size="small" type="success" @click="handleBatchExport" :disabled="selectedRows.length === 0">
+              批量导出
+            </el-button>
+          </div>
+        </div>
       </template>
-      <el-table :data="historyResults" v-loading="historyLoading" stripe>
+      <el-table :data="paginatedHistory" v-loading="historyLoading" stripe @selection-change="handleSelectionChange" :row-key="row => row.id">
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="stock_name" label="股票" width="120">
           <template #default="{ row }">{{ row.stock_name }} ({{ row.stock_code }})</template>
         </el-table-column>
@@ -444,6 +458,18 @@
           </template>
         </el-table-column>
       </el-table>
+      <!-- 分页组件 -->
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </el-card>
 
     <!-- 选择股票对话框 -->
@@ -574,6 +600,24 @@ const strategyList = ref([])
 const instanceList = ref([])
 const historyResults = ref([])
 const historyLoading = ref(false)
+// 分页相关状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const selectedRows = ref([])
+
+// 计算属性：分页后的历史记录
+const paginatedHistory = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return historyResults.value.slice(start, end)
+})
+
+// 计算属性：是否全选
+const isAllSelected = computed(() => {
+  if (paginatedHistory.value.length === 0) return false
+  return paginatedHistory.value.every(row => selectedRows.value.some(s => s.id === row.id))
+})
 // 实例管理
 const instanceManageVisible = ref(false)
 const instanceManageLoading = ref(false)
@@ -847,11 +891,80 @@ const loadHistory = async () => {
   try {
     const res = await backtestApi.getResults({})
     historyResults.value = res?.data || []
+    total.value = historyResults.value.length
   } catch (e) {
     console.error('加载历史记录失败:', e)
   } finally {
     historyLoading.value = false
   }
+}
+
+// 批量选择变化
+const handleSelectionChange = (rows) => {
+  selectedRows.value = rows
+}
+
+// 每页数量变化
+const handleSizeChange = () => {
+  currentPage.value = 1
+}
+
+// 页码变化
+const handleCurrentChange = () => {
+  // 页码改变时自动处理
+}
+
+// 全选/取消全选
+const handleSelectAll = () => {
+  if (isAllSelected.value) {
+    // 取消当前页全选
+    const currentIds = new Set(paginatedHistory.value.map(r => r.id))
+    selectedRows.value = selectedRows.value.filter(r => !currentIds.has(r.id))
+  } else {
+    // 全选当前页
+    const newSelected = paginatedHistory.value.filter(r => !selectedRows.value.some(s => s.id === r.id))
+    selectedRows.value = [...selectedRows.value, ...newSelected]
+  }
+}
+
+// 批量删除
+const handleBatchDelete = async () => {
+  if (selectedRows.value.length === 0) return
+  await ElMessageBox.confirm(`确认删除选中的 ${selectedRows.value.length} 条记录？`, '提示', { type: 'warning' })
+  try {
+    for (const row of selectedRows.value) {
+      await backtestApi.deleteResult(row.id)
+    }
+    ElMessage.success(`已删除 ${selectedRows.value.length} 条记录`)
+    selectedRows.value = []
+    loadHistory()
+  } catch (e) {
+    ElMessage.error('批量删除失败')
+  }
+}
+
+// 批量导出
+const handleBatchExport = () => {
+  if (selectedRows.value.length === 0) return
+  const exportData = selectedRows.value.map(row => ({
+    stock_code: row.stock_code,
+    stock_name: row.stock_name,
+    start_date: row.start_date,
+    end_date: row.end_date,
+    total_return: row.total_return,
+    max_drawdown: row.max_drawdown,
+    total_trades: row.total_trades,
+    win_rate: row.win_rate,
+    created_at: row.created_at
+  }))
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `backtest_history_${new Date().toISOString().slice(0, 10)}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出 ${selectedRows.value.length} 条记录`)
 }
 
 const viewResult = async (row) => {

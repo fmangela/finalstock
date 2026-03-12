@@ -230,10 +230,7 @@
                     <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </template>
-                <div class="input-with-suffix">
-                  <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
-                  <span class="suffix-text">%</span>
-                </div>
+                <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -244,10 +241,7 @@
                     <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </template>
-                <div class="input-with-suffix">
-                  <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
-                  <span class="suffix-text">%</span>
-                </div>
+                <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -347,7 +341,7 @@
                :style="{left: idx / (getEquityCurve().length - 1 || 1) * 100 + '%', bottom: ((point.value - minEquity) / ((maxEquity - minEquity) || 1) * 100) + '%'}"
                :title="point.date + ': ' + point.value">
           </div>
-          <div class="curve-line" :style="{background: Number(result.total_return) >= 0 ? '#67c23a' : '#f56c6c'}"></div>
+          <div class="curve-line" :style="{background: Number(result.total_return) >= 0 ? '#f56c6c' : '#67c23a'}"></div>
         </div>
         <div class="curve-labels">
           <span>{{ result.start_date }}</span>
@@ -704,7 +698,7 @@ const renderChart = async () => {
   if (buyPoints.length > 0) {
     const buyMarks = buyPoints.map(b => {
       const idx = dates.indexOf(b.date)
-      return idx >= 0 ? { coord: [idx, b.price], value: '买', itemStyle: { color: '#67c23a' } } : null
+      return idx >= 0 ? { coord: [idx, b.price], value: '买', itemStyle: { color: '#f56c6c' } } : null
     }).filter(Boolean)
     option.series.push({
       name: '买入', type: 'effectScatter', symbolSize: 15, data: buyMarks,
@@ -856,8 +850,8 @@ onMounted(() => {
 .stat-item { text-align: center; padding: 12px; background: #f5f7fa; border-radius: 8px; }
 .stat-label { font-size: 13px; color: #909399; margin-bottom: 4px; }
 .stat-value { font-size: 20px; font-weight: 600; }
-.positive { color: #67c23a; }
-.negative { color: #f56c6c; }
+.positive { color: #f56c6c; }
+.negative { color: #67c23a; }
 .chart-section, .trades-section { margin-top: 20px; }
 .section-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #303133; }
 .equity-curve { position: relative; height: 150px; background: linear-gradient(to bottom, #f0f2f5, #fff); border: 1px solid #ebeef5; border-radius: 4px; }
@@ -875,21 +869,4 @@ onMounted(() => {
   min-width: 50px;
 }
 
-/* 止盈止损 % 后缀样式 */
-.input-with-suffix {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-.input-with-suffix .el-input-number {
-  width: 100% !important;
-}
-.suffix-text {
-  position: absolute;
-  right: 28px;
-  color: #909399;
-  font-size: 14px;
-  pointer-events: none;
-}
 </style>

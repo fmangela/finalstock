@@ -342,7 +342,8 @@ exports.runBacktest = async (req, res) => {
           inPosition = true;
           trades.push({
             date, type: 'buy', price: parseFloat(price.toFixed(2)),
-            shares: newShares, amount: parseFloat(cost.toFixed(2))
+            shares: newShares, amount: parseFloat(cost.toFixed(2)),
+            account_balance: parseFloat(capital.toFixed(2))
           });
         }
       }
@@ -350,18 +351,43 @@ exports.runBacktest = async (req, res) => {
       // 执行卖出 - 使用totalShares确保有正确的股数
       if (shouldSell && inPosition) {
         const sellShares = totalShares > 0 ? totalShares : lastBuyShares;
+        const previousBuy = trades.filter(t => t.type === 'buy').pop();
+        
         if (sellShares > 0) {
           const sellAmount = sellShares * price;
           const profit = sellAmount - (sellShares * avgCost);
+          // 计算持仓天数
+          let holdDays = 0;
+          if (previousBuy) {
+            const buyDate = new Date(previousBuy.date);
+            const sellDate = new Date(date);
+            holdDays = Math.floor((sellDate - buyDate) / (1000 * 60 * 60 * 24));
+          }
+          // 计算持仓涨跌
+          const priceChange = previousBuy ? ((price - previousBuy.price) / previousBuy.price * 100) : 0;
+          // 判断卖出原因
+          let sellReason = '信号触发';
+          if (Math.abs((price - avgCost) / avgCost) >= take_profit_pct) {
+            sellReason = '止盈';
+          } else if (Math.abs((price - avgCost) / avgCost) >= stop_loss_pct) {
+            sellReason = '止损';
+          } else if ((strategy_type === 'ma' || strategy_type === 'ma_cross') && 
+                     maShort[i-1] >= maLong[i-1] && maShort[i] < maLong[i]) {
+            sellReason = '死叉';
+          }
+          
           capital += sellAmount;
           trades.push({
             date, type: 'sell', price: parseFloat(price.toFixed(2)),
             shares: sellShares, amount: parseFloat(sellAmount.toFixed(2)),
-            profit: parseFloat(profit.toFixed(2))
+            profit: parseFloat(profit.toFixed(2)),
+            account_balance: parseFloat(capital.toFixed(2)),
+            hold_days: holdDays,
+            price_change: parseFloat(priceChange.toFixed(2)),
+            sell_reason: sellReason
           });
           totalShares = 0;
         }
-        inPosition = false;
         avgCost = 0;
       }
     }
@@ -371,14 +397,26 @@ exports.runBacktest = async (req, res) => {
       const lastData = klineData[klineData.length - 1];
       if (lastData.date <= end_date) {
         const sellShares = totalShares > 0 ? totalShares : lastBuyShares;
+        const previousBuy = trades.filter(t => t.type === 'buy').pop();
         if (sellShares > 0) {
           const sellAmount = sellShares * lastData.close;
           const profit = sellAmount - (sellShares * avgCost);
+          let holdDays = 0;
+          if (previousBuy) {
+            const buyDate = new Date(previousBuy.date);
+            const sellDate = new Date(lastData.date);
+            holdDays = Math.floor((sellDate - buyDate) / (1000 * 60 * 60 * 24));
+          }
+          const priceChange = previousBuy ? ((lastData.close - previousBuy.price) / previousBuy.price * 100) : 0;
           capital += sellAmount;
           trades.push({
             date: lastData.date, type: 'sell', price: parseFloat(lastData.close.toFixed(2)),
             shares: sellShares, amount: parseFloat(sellAmount.toFixed(2)),
-            profit: parseFloat(profit.toFixed(2))
+            profit: parseFloat(profit.toFixed(2)),
+            account_balance: parseFloat(capital.toFixed(2)),
+            hold_days: holdDays,
+            price_change: parseFloat(priceChange.toFixed(2)),
+            sell_reason: '到期平仓'
           });
         }
       }

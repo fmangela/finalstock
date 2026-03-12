@@ -72,12 +72,24 @@
           <template v-if="selectedStrategy.strategy_type === 'ma' || selectedStrategy.strategy_type === 'ma_cross'">
             <el-row :gutter="20">
               <el-col :span="12">
-                <el-form-item label="短期均线">
+                <el-form-item>
+                  <template #label>
+                    短期均线
+                    <el-tooltip content="短期均线的周期天数，如5日均线" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.short_period" :min="1" :max="60" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
-                <el-form-item label="长期均线">
+                <el-form-item>
+                  <template #label>
+                    长期均线
+                    <el-tooltip content="长期均线的周期天数，如20日均线" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.long_period" :min="5" :max="120" style="width:100%" />
                 </el-form-item>
               </el-col>
@@ -88,17 +100,35 @@
           <template v-if="selectedStrategy.strategy_type === 'rsi'">
             <el-row :gutter="20">
               <el-col :span="8">
-                <el-form-item label="RSI周期">
+                <el-form-item>
+                  <template #label>
+                    RSI周期
+                    <el-tooltip content="计算RSI的天数周期，常用14天" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.rsi_period" :min="1" :max="30" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="超卖阈值">
+                <el-form-item>
+                  <template #label>
+                    超卖阈值
+                    <el-tooltip content="RSI低于此值时视为超卖，可能出现买入信号" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.oversold" :min="10" :max="50" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="超买阈值">
+                <el-form-item>
+                  <template #label>
+                    超买阈值
+                    <el-tooltip content="RSI高于此值时视为超买，可能出现卖出信号" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.overbought" :min="50" :max="90" style="width:100%" />
                 </el-form-item>
               </el-col>
@@ -109,17 +139,35 @@
           <template v-if="selectedStrategy.strategy_type === 'macd'">
             <el-row :gutter="20">
               <el-col :span="8">
-                <el-form-item label="快线周期">
+                <el-form-item>
+                  <template #label>
+                    快线周期
+                    <el-tooltip content="MACD快速EMA的周期，常用12天" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.fast_period" :min="1" :max="30" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="慢线周期">
+                <el-form-item>
+                  <template #label>
+                    慢线周期
+                    <el-tooltip content="MACD慢速EMA的周期，常用26天" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.slow_period" :min="5" :max="60" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="信号线周期">
+                <el-form-item>
+                  <template #label>
+                    信号线周期
+                    <el-tooltip content="DEA信号线的周期，常用9天" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.signal_period" :min="1" :max="20" style="width:100%" />
                 </el-form-item>
               </el-col>
@@ -130,12 +178,24 @@
           <template v-if="selectedStrategy.strategy_type === 'boll'">
             <el-row :gutter="20">
               <el-col :span="12">
-                <el-form-item label="布林带周期">
+                <el-form-item>
+                  <template #label>
+                    布林带周期
+                    <el-tooltip content="计算布林带中轨的周期天数，常用20天" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.boll_period" :min="5" :max="50" style="width:100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
-                <el-form-item label="标准差倍数">
+                <el-form-item>
+                  <template #label>
+                    标准差倍数
+                    <el-tooltip content="布林带上下轨与中轨的距离倍数，常用2倍" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.std_dev" :min="1" :max="4" :step="0.5" style="width:100%" />
                 </el-form-item>
               </el-col>
@@ -146,7 +206,13 @@
           <template v-if="selectedStrategy.strategy_type === 'breakout'">
             <el-row :gutter="20">
               <el-col :span="12">
-                <el-form-item label="周期">
+                <el-form-item>
+                  <template #label>
+                    周期
+                    <el-tooltip content="计算前N天的最高价和最低价作为突破阈值" placement="top">
+                      <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
                   <el-input-number v-model="form.params.breakout_period" :min="5" :max="60" style="width:100%" />
                 </el-form-item>
               </el-col>
@@ -157,12 +223,24 @@
           <el-divider>止盈止损设置</el-divider>
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="止损比例">
+              <el-form-item>
+                <template #label>
+                  止损比例
+                  <el-tooltip content="亏损达到此比例时强制卖出，如5%表示亏损超过5%就止损" placement="top">
+                    <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </template>
                 <el-input-number v-model="form.params.stop_loss_pct" :min="0" :max="0.5" :step="0.01" :precision="2" style="width:100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="止盈比例">
+              <el-form-item>
+                <template #label>
+                  止盈比例
+                  <el-tooltip content="盈利达到此比例时自动卖出，如15%表示盈利超过15%就止盈" placement="top">
+                    <el-icon style="margin-left:4px;cursor:help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </template>
                 <el-input-number v-model="form.params.take_profit_pct" :min="0" :max="1" :step="0.01" :precision="2" style="width:100%" />
               </el-form-item>
             </el-col>
@@ -276,27 +354,53 @@
       <!-- 交易记录 -->
       <div class="trades-section">
         <div class="section-title">交易记录</div>
-        <el-table :data="result.trades_json" stripe max-height="300">
-          <el-table-column prop="date" label="日期" width="120" />
-          <el-table-column prop="type" label="操作" width="80">
+        <el-table :data="getTrades()" stripe max-height="350">
+          <el-table-column prop="date" label="交易日期" width="100" />
+          <el-table-column prop="type" label="操作" width="70">
             <template #default="{ row }">
               <el-tag :type="row.type === 'buy' ? 'primary' : 'success'" size="small">
                 {{ row.type === 'buy' ? '买入' : '卖出' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="price" label="价格" width="100">
+          <el-table-column prop="price" label="股价" width="80">
             <template #default="{ row }">{{ Number(row.price || 0).toFixed(2) }}</template>
           </el-table-column>
-          <el-table-column prop="shares" label="数量" width="100" />
-          <el-table-column prop="amount" label="金额" width="120">
-            <template #default="{ row }">{{ Number(row.amount || 0).toFixed(2) }}</template>
+          <el-table-column prop="shares" label="股数" width="80" />
+          <el-table-column prop="amount" label="交易金额" width="100">
+            <template #default="{ row }">{{ formatMoney(row.amount) }}</template>
           </el-table-column>
-          <el-table-column prop="profit" label="收益" width="100">
+          <el-table-column prop="account_balance" label="账户余额" width="100">
+            <template #default="{ row }">{{ row.account_balance ? formatMoney(row.account_balance) : '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="profit" label="收益" width="80">
             <template #default="{ row }">
               <span v-if="row.profit !== undefined" :class="row.profit >= 0 ? 'positive' : 'negative'">
-                {{ Number(row.profit || 0).toFixed(2) }}
+                {{ row.profit >= 0 ? '+' : '' }}{{ formatMoney(row.profit) }}
               </span>
+              <span v-else style="color:#999">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="hold_days" label="持仓天数" width="80">
+            <template #default="{ row }">
+              <span v-if="row.hold_days !== undefined">{{ row.hold_days }}天</span>
+              <span v-else style="color:#999">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="price_change" label="持仓涨跌" width="85">
+            <template #default="{ row }">
+              <span v-if="row.price_change !== undefined" :class="row.price_change >= 0 ? 'positive' : 'negative'">
+                {{ row.price_change >= 0 ? '+' : '' }}{{ row.price_change.toFixed(2) }}%
+              </span>
+              <span v-else style="color:#999">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="sell_reason" label="卖出原因" width="85">
+            <template #default="{ row }">
+              <el-tag v-if="row.sell_reason" :type="getSellReasonType(row.sell_reason)" size="small">
+                {{ row.sell_reason }}
+              </el-tag>
+              <span v-else style="color:#999">-</span>
             </template>
           </el-table-column>
         </el-table>
@@ -356,7 +460,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { backtestApi, strategyApi } from '@/api'
 
@@ -413,15 +518,34 @@ const selectedStrategy = computed(() => {
 const getEquityCurve = () => {
   const curve = result.value?.equity_curve
   if (!curve || !Array.isArray(curve)) return []
-  // 如果是字符串，尝试解析
   if (typeof curve === 'string') {
-    try {
-      return JSON.parse(curve)
-    } catch {
-      return []
-    }
+    try { return JSON.parse(curve) } catch { return [] }
   }
   return curve
+}
+
+// 格式化金额（千分位）
+const formatMoney = (value) => {
+  if (value === null || value === undefined) return '-'
+  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// 获取交易记录（处理字符串格式）
+const getTrades = () => {
+  const trades = result.value?.trades_json
+  if (!trades) return []
+  if (typeof trades === 'string') {
+    try { return JSON.parse(trades) } catch { return [] }
+  }
+  return trades
+}
+
+// 卖出原因标签类型
+const getSellReasonType = (reason) => {
+  if (reason === '止盈') return 'success'
+  if (reason === '止损') return 'danger'
+  if (reason === '死叉' || reason === '金叉') return 'warning'
+  return 'info'
 }
 
 const minEquity = computed(() => {

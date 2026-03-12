@@ -121,9 +121,45 @@ const BacktestResult = sequelize.define('BacktestResult', {
   buy_points: { type: DataTypes.JSON },
   sell_points: { type: DataTypes.JSON },
   ma5: { type: DataTypes.JSON },
-  ma20: { type: DataTypes.JSON }
+  ma20: { type: DataTypes.JSON },
+  // 新增：策略信息
+  strategy_id: { type: DataTypes.INTEGER },
+  strategy_instance_id: { type: DataTypes.INTEGER },
+  strategy_params_json: { type: DataTypes.JSON }
 }, { tableName: 'backtest_results', timestamps: true, underscored: true });
+
+const BacktestStrategy = sequelize.define('BacktestStrategy', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING(100), allowNull: false },
+  description: { type: DataTypes.TEXT },
+  strategy_type: { type: DataTypes.STRING(50), allowNull: false },
+  category: { type: DataTypes.STRING(50), defaultValue: '技术指标' },
+  is_system: { type: DataTypes.TINYINT, defaultValue: 1 }
+}, { tableName: 'backtest_strategies', timestamps: true, underscored: true });
+
+const StrategyParam = sequelize.define('StrategyParam', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  strategy_id: { type: DataTypes.INTEGER, allowNull: false },
+  param_name: { type: DataTypes.STRING(50), allowNull: false },
+  param_label: { type: DataTypes.STRING(100), allowNull: false },
+  param_type: { type: DataTypes.STRING(20), defaultValue: 'number' },
+  default_value: { type: DataTypes.STRING(100) },
+  min_value: { type: DataTypes.DECIMAL(10, 2) },
+  max_value: { type: DataTypes.DECIMAL(10, 2) },
+  step: { type: DataTypes.DECIMAL(10, 2), defaultValue: 1 },
+  options: { type: DataTypes.JSON }
+}, { tableName: 'strategy_params', timestamps: true, underscored: true });
+
+const StrategyInstance = sequelize.define('StrategyInstance', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING(100), allowNull: false },
+  strategy_id: { type: DataTypes.INTEGER, allowNull: false },
+  params_json: { type: DataTypes.JSON, allowNull: false },
+  description: { type: DataTypes.TEXT },
+  is_favorite: { type: DataTypes.TINYINT, defaultValue: 0 },
+  use_count: { type: DataTypes.INTEGER, defaultValue: 0 }
+}, { tableName: 'strategy_instances', timestamps: true, underscored: true });
 
 const AppLog = require('./log');
 
-module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance, BacktestConfig, BacktestResult, AppLog };
+module.exports = { SystemConfig, StockNews, StockPrediction, StockPrompt, SimulationAccount, SimulationPosition, DailyGuidance, BacktestConfig, BacktestResult, BacktestStrategy, StrategyParam, StrategyInstance, AppLog };

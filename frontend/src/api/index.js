@@ -83,3 +83,16 @@ export const backtestApi = {
   deleteResult: (id) => http.delete(`/backtest/results/${id}`),
   run: (data) => http.post('/backtest/run', data, { timeout: 60000 })
 }
+
+export const strategyApi = {
+  getStrategies: () => http.get('/strategy/strategies'),
+  getStrategyDetail: (id) => http.get(`/strategy/strategies/${id}`),
+  createStrategy: (data) => http.post('/strategy/strategies', data),
+  updateStrategy: (id, data) => http.put(`/strategy/strategies/${id}`, data),
+  deleteStrategy: (id) => http.delete(`/strategy/strategies/${id}`),
+  addParam: (data) => http.post('/strategy/params', data),
+  getInstances: (params) => http.get('/strategy/instances', { params }),
+  createInstance: (data) => http.post('/strategy/instances', data),
+  updateInstance: (id, data) => http.put(`/strategy/instances/${id}`, data),
+  deleteInstance: (id) => http.delete(`/strategy/instances/${id}`)
+}

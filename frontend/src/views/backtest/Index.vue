@@ -117,8 +117,8 @@
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">总收益率</div>
-            <div class="stat-value" :class="result.total_return >= 0 ? 'positive' : 'negative'">
-              {{ result.total_return?.toFixed(2) }}%
+            <div class="stat-value" :class="Number(result.total_return) >= 0 ? 'positive' : 'negative'">
+              {{ Number(result.total_return).toFixed(2) }}%
             </div>
           </div>
         </el-col>
@@ -126,20 +126,20 @@
           <div class="stat-item">
             <div class="stat-label">年化收益率</div>
             <div class="stat-value" :class="result.annual_return >= 0 ? 'positive' : 'negative'">
-              {{ result.annual_return?.toFixed(2) }}%
+              {{ Number(result.annual_return || 0).toFixed(2) }}%
             </div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">最大回撤</div>
-            <div class="stat-value negative">{{ result.max_drawdown?.toFixed(2) }}%</div>
+            <div class="stat-value negative">{{ Number(result.max_drawdown).toFixed(2) }}%</div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">夏普比率</div>
-            <div class="stat-value">{{ result.sharpe_ratio?.toFixed(2) }}</div>
+            <div class="stat-value">{{ Number(result.sharpe_ratio || 0).toFixed(2) }}</div>
           </div>
         </el-col>
       </el-row>
@@ -166,8 +166,8 @@
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">胜率</div>
-            <div class="stat-value" :class="result.win_rate >= 50 ? 'positive' : 'negative'">
-              {{ result.win_rate?.toFixed(2) }}%
+            <div class="stat-value" :class="Number(result.win_rate) >= 50 ? 'positive' : 'negative'">
+              {{ Number(result.win_rate).toFixed(2) }}%
             </div>
           </div>
         </el-col>
@@ -177,17 +177,17 @@
       <div class="chart-section">
         <div class="section-title">资金曲线</div>
         <div class="equity-curve">
-          <div v-for="(point, idx) in result.equity_curve" :key="idx" 
+          <div v-for="(point, idx) in getEquityCurve()" :key="idx" 
                class="curve-point" 
-               :style="{left: idx / (result.equity_curve.length - 1) * 100 + '%', bottom: ((point.value - minEquity) / (maxEquity - minEquity) * 100) + '%'}"
+               :style="{left: idx / (getEquityCurve().length - 1 || 1) * 100 + '%', bottom: ((point.value - minEquity) / ((maxEquity - minEquity) || 1) * 100) + '%'}"
                :title="point.date + ': ' + point.value">
           </div>
-          <div class="curve-line" :style="{background: result.total_return >= 0 ? '#67c23a' : '#f56c6c'}"></div>
+          <div class="curve-line" :style="{background: Number(result.total_return) >= 0 ? '#67c23a' : '#f56c6c'}"></div>
         </div>
         <div class="curve-labels">
           <span>{{ result.start_date }}</span>
           <span>初始: {{ result.initial_capital }}</span>
-          <span>最终: {{ result.final_capital?.toFixed(0) }}</span>
+          <span>最终: {{ Number(result.final_capital || 0).toFixed(0) }}</span>
           <span>{{ result.end_date }}</span>
         </div>
       </div>
@@ -205,16 +205,16 @@
             </template>
           </el-table-column>
           <el-table-column prop="price" label="价格" width="100">
-            <template #default="{ row }">{{ row.price?.toFixed(2) }}</template>
+            <template #default="{ row }">{{ Number(row.price || 0).toFixed(2) }}</template>
           </el-table-column>
           <el-table-column prop="shares" label="数量" width="100" />
           <el-table-column prop="amount" label="金额" width="120">
-            <template #default="{ row }">{{ row.amount?.toFixed(2) }}</template>
+            <template #default="{ row }">{{ Number(row.amount || 0).toFixed(2) }}</template>
           </el-table-column>
           <el-table-column prop="profit" label="收益" width="100">
             <template #default="{ row }">
               <span v-if="row.profit !== undefined" :class="row.profit >= 0 ? 'positive' : 'negative'">
-                {{ row.profit?.toFixed(2) }}
+                {{ Number(row.profit || 0).toFixed(2) }}
               </span>
             </template>
           </el-table-column>
@@ -235,15 +235,15 @@
         <el-table-column prop="end_date" label="结束日期" width="120" />
         <el-table-column prop="total_return" label="收益率" width="100">
           <template #default="{ row }">
-            <span :class="Number(row.total_return) >= 0 ? 'positive' : 'negative'">{{ Number(row.total_return).toFixed(2) }}%</span>
+            <span :class="Number(row.total_return || 0) >= 0 ? 'positive' : 'negative'">{{ Number(row.total_return || 0).toFixed(2) }}%</span>
           </template>
         </el-table-column>
         <el-table-column prop="max_drawdown" label="最大回撤" width="100">
-          <template #default="{ row }">{{ Number(row.max_drawdown).toFixed(2) }}%</template>
+          <template #default="{ row }">{{ Number(row.max_drawdown || 0).toFixed(2) }}%</template>
         </el-table-column>
         <el-table-column prop="total_trades" label="交易次数" width="100" />
         <el-table-column prop="win_rate" label="胜率" width="80">
-          <template #default="{ row }">{{ Number(row.win_rate).toFixed(0) }}%</template>
+          <template #default="{ row }">{{ Number(row.win_rate || 0).toFixed(0) }}%</template>
         </el-table-column>
         <el-table-column prop="created_at" label="回测时间" width="180">
           <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
@@ -313,8 +313,21 @@ const historyLoading = ref(false)
 const result = ref(null)
 
 // 计算权益曲线范围
-const minEquity = computed(() => Math.min(...(result.value?.equity_curve?.map(p => p.value) || [0])))
-const maxEquity = computed(() => Math.max(...(result.value?.equity_curve?.map(p => p.value) || [1])))
+const getEquityCurve = () => {
+  const curve = result.value?.equity_curve
+  if (!curve || !Array.isArray(curve)) return []
+  return curve
+}
+const minEquity = computed(() => {
+  const curve = getEquityCurve()
+  if (curve.length === 0) return 0
+  return Math.min(...curve.map(p => p.value))
+})
+const maxEquity = computed(() => {
+  const curve = getEquityCurve()
+  if (curve.length === 0) return 1
+  return Math.max(...curve.map(p => p.value))
+})
 
 // 策略预设
 const applyStrategy = (val) => {
@@ -467,9 +480,35 @@ const viewResult = async (row) => {
   try {
     const res = await backtestApi.getResult(row.id)
     if (res.code === 0) {
-      result.value = res.data
+      const data = res.data
+      // 解析JSON字符串字段
+      if (typeof data.equity_curve === 'string') {
+        data.equity_curve = JSON.parse(data.equity_curve)
+      }
+      if (typeof data.trades_json === 'string') {
+        data.trades_json = JSON.parse(data.trades_json)
+      }
+      if (typeof data.monthly_returns === 'string') {
+        data.monthly_returns = JSON.parse(data.monthly_returns)
+      }
+      if (typeof data.kline_data === 'string') {
+        data.kline_data = JSON.parse(data.kline_data)
+      }
+      if (typeof data.buy_points === 'string') {
+        data.buy_points = JSON.parse(data.buy_points)
+      }
+      if (typeof data.sell_points === 'string') {
+        data.sell_points = JSON.parse(data.sell_points)
+      }
+      if (typeof data.ma5 === 'string') {
+        data.ma5 = JSON.parse(data.ma5)
+      }
+      if (typeof data.ma20 === 'string') {
+        data.ma20 = JSON.parse(data.ma20)
+      }
+      result.value = data
       // 如果有K线数据则绑制图表
-      if (res.data.kline_data && res.data.kline_data.length > 0) {
+      if (data.kline_data && data.kline_data.length > 0) {
         setTimeout(renderChart, 100)
       }
     }

@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Vue-3.3-brightgreen" alt="Vue">
   <img src="https://img.shields.io/badge/Node.js-20+-green" alt="Node.js">
   <img src="https://img.shields.io/badge/MariaDB-10.5-blue" alt="MariaDB">
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+  <img src="https://img.shields.io/badge/License-Proprietary-red" alt="License">
 </p>
 
 基于 Vue 3 + Node.js 的 A 股智能分析平台，集成 LLM 选股、回测系统、模拟交易、市场资讯等功能。
@@ -191,10 +191,13 @@ docker-compose logs -f
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/simulation/account` | GET | 账户信息 |
-| `/api/simulation/buy` | POST | 买入股票 |
-| `/api/simulation/sell` | POST | 卖出股票 |
-| `/api/simulation/positions` | GET | 持仓列表 |
+| `/api/sim/tasks` | GET | 任务列表 |
+| `/api/sim/tasks` | POST | 新建任务 |
+| `/api/sim/tasks/:id` | GET | 任务详情 |
+| `/api/sim/tasks/:id` | PUT | 暂停/恢复/停止 |
+| `/api/sim/tasks/:id` | DELETE | 删除任务 |
+| `/api/sim/tasks/:id/run` | POST | 手动推进 |
+| `/api/sim/stocks` | GET | 可选股票 |
 
 ## 📁 项目结构
 
@@ -271,7 +274,11 @@ A: 回测数据量较大时可能需要较长时间，建议先使用少量数�
 
 ## 📄 许可证
 
-MIT License - 请查看 LICENSE 文件
+本软件为专有商业软件，版权所有 © 2025 fmangela，保留所有权利。
+
+未经版权持有人明确书面授权，严禁以任何形式复制、分发、修改或商业使用本软件。
+
+详见 [LICENSE](./LICENSE) 文件。
 
 ## 🙏 致谢
 

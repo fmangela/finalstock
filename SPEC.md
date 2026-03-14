@@ -220,8 +220,7 @@ CREATE TABLE daily_guidance (
 - API 对接
 
 ### 步骤4: 部署配置
-- Nginx 反向代理
-- 开机自启配置
+- 开机自启配置（systemd）
 
 ---
 
@@ -240,5 +239,5 @@ CREATE TABLE daily_guidance (
 1. **数据库**: 使用已有的 openclaw 数据库，保留其他表
 2. **数据源**: 优先使用 AKShare (完全免费)
 3. **LLM**: 通过设置页面配置 API
-4. **端口**: 后端 3000，前端开发 5173，生产由 Nginx 代理到 9898
+4. **端口**: 后端 3000，前端开发 5173
 5. **路径**: 访问路径 /finalstock/

@@ -1,8 +1,11 @@
+// 大模型配置路由
+// 支持国内主流 LLM 提供商（硅基流动、通义千问、文心一言等）及自定义接口
+// 所有配置持久化到 system_configs 表（config_group='llm_config'）
 const router = require('express').Router();
 const { SystemConfig } = require('../models');
 const axios = require('axios');
 
-// LLM 提供商配置
+// 内置提供商列表：前端下拉选择后自动填充 baseUrl 和可用模型
 const LLM_PROVIDERS = {
   'siliconflow': {
     name: '硅基流动 (SiliconFlow)',
@@ -56,7 +59,7 @@ const LLM_PROVIDERS = {
   }
 };
 
-// 获取 LLM 配置
+// 获取当前 LLM 配置，同时返回提供商列表（供前端下拉渲染）
 router.get('/get', async (req, res) => {
   try {
     const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
@@ -70,7 +73,7 @@ router.get('/get', async (req, res) => {
   }
 });
 
-// 保存 LLM 配置
+// 保存 LLM 配置（provider / api_url / api_key / model_name）
 router.post('/save', async (req, res) => {
   try {
     const { provider, api_url, api_key, model_name } = req.body;
@@ -94,12 +97,13 @@ router.post('/save', async (req, res) => {
   }
 });
 
-// 测试 LLM 连接
+// 测试 LLM 连接：发送一条简单消息，验证 API Key 和地址是否可用
+// 可传入临时参数测试，也可不传参数（自动读取已保存配置）
 router.post('/test', async (req, res) => {
   try {
     const { provider, api_url, api_key, model_name } = req.body;
-    
-    // 如果没传参数，从已保存的配置读取
+
+    // 未传参数时，从数据库读取已保存的配置
     if (!provider && !api_url) {
       const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
       const cfg = {};
@@ -138,10 +142,10 @@ router.post('/test', async (req, res) => {
     const headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
     const data = { model: model, messages: [{ role: 'user', content: '你好' }], max_tokens: 50 };
     
-    // 代理配置 - 硅基流动等国内API直接连接，不走代理
+    // 国内 API 默认禁用代理（proxy: false），避免走系统代理导致连接失败
     const axiosConfig = { headers, timeout: 15000, proxy: false };
-    
-    // 只有在手动配置的自定义URL（非国内主流API）时才考虑代理
+
+    // 非国内主流 API（如 OpenAI）且系统配置了代理时，启用代理
     const isChineseAPI = fullUrl.includes('siliconflow') || fullUrl.includes('qianfan') || fullUrl.includes('dashscope') || fullUrl.includes('bigmodel') || fullUrl.includes('hunyuan') || fullUrl.includes('moonshot') || fullUrl.includes('baichuan');
     
     if (!isChineseAPI && (process.env.HTTP_PROXY || process.env.HTTPS_PROXY)) {

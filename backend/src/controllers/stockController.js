@@ -1,5 +1,7 @@
+// 股票行情控制器：通过 DataService 获取行情数据并返回给前端
 const DataService = require('../services/DataService');
 
+// 获取 A 股股票列表（支持分页和关键字搜索）
 exports.getList = async (req, res) => {
   try {
     const { page = 1, pageSize = 50, keyword = '' } = req.query;
@@ -10,6 +12,7 @@ exports.getList = async (req, res) => {
   }
 };
 
+// 获取单只股票实时行情
 exports.getQuote = async (req, res) => {
   try {
     const { code } = req.params;
@@ -21,6 +24,8 @@ exports.getQuote = async (req, res) => {
   }
 };
 
+// 获取历史 K 线数据
+// period: daily / weekly / monthly；limit: 返回条数
 exports.getHistory = async (req, res) => {
   try {
     const { code } = req.params;
@@ -32,6 +37,7 @@ exports.getHistory = async (req, res) => {
   }
 };
 
+// 获取大盘三大指数概览（上证、深证、创业板）
 exports.getMarketOverview = async (req, res) => {
   try {
     const data = await DataService.getMarketOverview();

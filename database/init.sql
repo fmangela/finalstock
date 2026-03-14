@@ -316,6 +316,81 @@ INSERT INTO `stock_prompts` (`name`, `content`, `market_type`, `push_news`, `pus
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `content` = VALUES(`content`), `updated_at` = CURRENT_TIMESTAMP;
 
 -- ============================================
+-- 14. K线历史缓存表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `stock_kline_cache` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `stock_code` VARCHAR(10) NOT NULL COMMENT '股票代码',
+  `trade_date` DATE NOT NULL COMMENT '交易日期',
+  `open`   DECIMAL(10,3) NOT NULL COMMENT '开盘价',
+  `close`  DECIMAL(10,3) NOT NULL COMMENT '收盘价',
+  `high`   DECIMAL(10,3) NOT NULL COMMENT '最高价',
+  `low`    DECIMAL(10,3) NOT NULL COMMENT '最低价',
+  `volume` BIGINT DEFAULT 0 COMMENT '成交量（手）',
+  `amount` DECIMAL(20,2) DEFAULT 0 COMMENT '成交额（元）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code_date` (`stock_code`, `trade_date`),
+  INDEX idx_stock_code (`stock_code`),
+  INDEX idx_trade_date (`trade_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='股票K线历史缓存表';
+
+-- ============================================
+-- 15. 模拟交易任务表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `sim_tasks` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `stock_code`      VARCHAR(10) NOT NULL COMMENT '股票代码',
+  `stock_name`      VARCHAR(50) COMMENT '股票名称',
+  `initial_capital` DECIMAL(15,2) NOT NULL DEFAULT 100000 COMMENT '初始资金',
+  `cash_balance`    DECIMAL(15,2) NOT NULL DEFAULT 100000 COMMENT '当前现金',
+  `shares`          INT NOT NULL DEFAULT 0 COMMENT '当前持股数量',
+  `avg_cost`        DECIMAL(10,3) DEFAULT 0 COMMENT '持仓均价',
+  `strategy_type`   VARCHAR(20) NOT NULL DEFAULT 'ma' COMMENT '策略类型',
+  `strategy_params` JSON COMMENT '策略参数',
+  `trade_timing`    ENUM('pre_open','pre_close') DEFAULT 'pre_close' COMMENT '交易时机：盘前/收盘前',
+  `status`          ENUM('running','paused','stopped') DEFAULT 'running' COMMENT '任务状态',
+  `last_run_date`   DATE COMMENT '最近执行日期',
+  `total_return`    DECIMAL(10,4) DEFAULT 0 COMMENT '总收益率(%)',
+  `max_drawdown`    DECIMAL(10,4) DEFAULT 0 COMMENT '最大回撤(%)',
+  `total_trades`    INT DEFAULT 0 COMMENT '总交易次数',
+  `win_trades`      INT DEFAULT 0 COMMENT '盈利次数',
+  `peak_value`      DECIMAL(15,2) DEFAULT 0 COMMENT '历史最高总资产（用于计算最大回撤）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX idx_stock_code (`stock_code`),
+  INDEX idx_status (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模拟交易任务表';
+
+-- ============================================
+-- 16. 模拟交易记录表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `sim_trades` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `task_id`       INT NOT NULL COMMENT '任务ID',
+  `trade_date`    DATE NOT NULL COMMENT '交易日期',
+  `type`          ENUM('buy','sell') NOT NULL COMMENT '买入/卖出',
+  `price`         DECIMAL(10,3) NOT NULL COMMENT '成交价（含滑点）',
+  `raw_price`     DECIMAL(10,3) COMMENT '信号触发时原始价格',
+  `shares`        INT NOT NULL COMMENT '成交股数',
+  `amount`        DECIMAL(15,2) NOT NULL COMMENT '成交金额',
+  `slippage`      DECIMAL(10,4) DEFAULT 0 COMMENT '滑点金额',
+  `signal_reason` VARCHAR(200) COMMENT '信号原因',
+  `is_limit_up`   TINYINT(1) DEFAULT 0 COMMENT '是否涨停',
+  `is_limit_down` TINYINT(1) DEFAULT 0 COMMENT '是否跌停',
+  `cash_before`   DECIMAL(15,2) COMMENT '交易前现金',
+  `cash_after`    DECIMAL(15,2) COMMENT '交易后现金',
+  `profit_loss`   DECIMAL(15,2) DEFAULT 0 COMMENT '本次盈亏（卖出时计算）',
+  `hold_days`     INT DEFAULT 0 COMMENT '持仓天数（卖出时计算）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX idx_task_id (`task_id`),
+  INDEX idx_trade_date (`trade_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模拟交易记录表';
+
+-- ============================================
 -- 完成
 -- ============================================
 SELECT '数据库初始化完成!' AS result;

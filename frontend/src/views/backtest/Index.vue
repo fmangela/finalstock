@@ -416,7 +416,8 @@
       <template #header>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span>历史回测记录</span>
-          <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span v-if="selectedRows.length > 0" style="color:#909399;font-size:13px">已选 {{ selectedRows.length }} 条</span>
             <el-button size="small" @click="handleSelectAll" :disabled="paginatedHistory.length === 0">
               {{ isAllSelected ? '取消全选' : '全选' }}
             </el-button>
@@ -552,6 +553,11 @@
   </div>
 </template>
 
+<!-- 股票回测页面
+  功能：选择股票 → 配置策略参数 → 执行回测 → 查看 K 线图表和交易记录
+  策略参数根据所选策略类型动态显示对应的参数表单
+  回测结果持久化到数据库，可在历史记录中查看和导出
+-->
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus'
@@ -559,11 +565,11 @@ import { QuestionFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { backtestApi, strategyApi } from '@/api'
 
-// 图表引用
+// ECharts 图表实例引用
 const chartRef = ref(null)
 let chartInstance = null
 
-// 表单数据
+// 回测表单：股票、日期范围、初始资金、策略选择和参数
 const form = ref({
   stock_code: '',
   stock_name: '',
@@ -590,21 +596,21 @@ const form = ref({
   }
 })
 
-// 状态
-const running = ref(false)
-const savingInstance = ref(false)
+// 页面状态
+const running = ref(false)           // 回测执行中
+const savingInstance = ref(false)    // 保存策略实例中
 const stockDialogVisible = ref(false)
 const stockLoading = ref(false)
-const stockList = ref([])
-const strategyList = ref([])
-const instanceList = ref([])
-const historyResults = ref([])
+const stockList = ref([])            // 可回测的股票列表（来自 AI 选股）
+const strategyList = ref([])         // 系统内置策略列表
+const instanceList = ref([])         // 用户保存的策略实例
+const historyResults = ref([])       // 历史回测记录
 const historyLoading = ref(false)
-// 分页相关状态
+// 历史记录分页
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-const selectedRows = ref([])
+const selectedRows = ref([])         // 历史记录多选（用于批量删除/导出）
 
 // 计算属性：分页后的历史记录
 const paginatedHistory = computed(() => {
@@ -885,7 +891,7 @@ const runBacktest = async () => {
   }
 }
 
-// 加载历史
+// 加载历史回测记录列表（不含图表数据，减少传输量）
 const loadHistory = async () => {
   historyLoading.value = true
   try {
@@ -893,7 +899,7 @@ const loadHistory = async () => {
     historyResults.value = res?.data || []
     total.value = historyResults.value.length
   } catch (e) {
-    console.error('加载历史记录失败:', e)
+    ElMessage.error('加载历史记录失败')
   } finally {
     historyLoading.value = false
   }
@@ -986,7 +992,6 @@ const viewResult = async (row) => {
       }
     }
   } catch (e) {
-    console.error('加载回测结果失败:', e)
     ElMessage.error('加载回测结果失败')
   }
 }

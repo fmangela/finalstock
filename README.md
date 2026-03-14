@@ -134,11 +134,8 @@ sudo ./deploy.sh
 脚本会自动完成：
 - 安装 Node.js 20.x
 - 安装 MariaDB
-- 安装 Nginx
 - 配置数据库
 - 部署后端服务（systemd）
-- 构建部署前端
-- 配置 Nginx 反向代理
 
 ### Docker 部署
 
@@ -154,14 +151,7 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
-访问地址：`http://your-server-ip`
-
-### 宝塔面板部署
-
-1. 在宝塔面板创建站点
-2. 上传 `frontend/dist/` 到站点目录
-3. 配置 Nginx 反向代理到 `127.0.0.1:3000`
-4. 导入数据库：`database/init.sql`
+访问地址：`http://your-server-ip:3000`
 
 ## 📚 API 接口
 
@@ -237,7 +227,6 @@ finalstock/
 │
 ├── deploy.sh              # 一键部署脚本
 ├── docker-compose.yml     # Docker 配置
-├── nginx.conf             # Nginx 配置
 └── README.md              # 项目文档
 ```
 
@@ -275,10 +264,6 @@ A: 检查 `.env` 中的数据库配置，确保 MariaDB/MySQL 已启动且用户
 ### Q: LLM 选股无法使用
 
 A: 需要在系统配置中填写 LLM API Key，当前支持 SiliconFlow 等兼容 OpenAI API 的服务。
-
-### Q: 前端页面空白
-
-A: 检查 Nginx 配置是否正确，确保 `dist` 目录路径正确且已执行 `npm run build`。
 
 ### Q: 回测执行缓慢
 

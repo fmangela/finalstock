@@ -15,19 +15,23 @@
         <el-tab-pane label="进行中" name="active" />
         <el-tab-pane label="成功" name="success" />
         <el-tab-pane label="失败" name="failed" />
-        <el-tab-pane label="已放弃" name="abandoned">
-          <template #label>
-            <span>已放弃</span>
-            <el-checkbox v-if="activeTab === 'abandoned'" v-model="selectAll" :indeterminate="isIndeterminate" @change="handleSelectAll" style="margin-left:8px">全选</el-checkbox>
-          </template>
-        </el-tab-pane>
+        <el-tab-pane label="已放弃" name="abandoned" />
       </el-tabs>
-      <div v-if="activeTab === 'abandoned'" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <el-checkbox v-model="selectAll" :indeterminate="isIndeterminate" @change="handleSelectAll">全选</el-checkbox>
+        <span v-if="selectedRows.length > 0" style="color:#909399;font-size:13px">已选 {{ selectedRows.length }} 条</span>
+        <el-button v-if="activeTab === 'active' || activeTab === ''" size="small" type="warning"
+          @click="batchAbandon" :disabled="selectedRows.filter(r=>r.status==='active').length===0">
+          批量放弃
+        </el-button>
+        <el-button v-if="activeTab === 'abandoned' || activeTab === ''" size="small" type="success"
+          @click="batchRestore" :disabled="selectedRows.filter(r=>r.status==='abandoned').length===0">
+          批量恢复
+        </el-button>
         <el-button size="small" type="danger" @click="batchDelete" :disabled="selectedRows.length===0">批量删除</el-button>
-        <el-button size="small" type="success" @click="batchRestore" :disabled="selectedRows.length===0">批量恢复</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe @selection-change="handleSelectionChange" @sort-change="handleSortChange">
-        <el-table-column v-if="activeTab === 'abandoned'" type="selection" width="50" />
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="stock_code" label="代码" width="90" sortable="custom" />
         <el-table-column prop="stock_name" label="名称" width="100" sortable="custom" />
         <el-table-column prop="stockup_date" label="选股时间" width="170" sortable="custom">
@@ -184,6 +188,8 @@ const handleTabChange = () => {
   sortField.value = ''
   sortOrder.value = ''
   page.value = 1
+  selectedRows.value = []
+  selectAll.value = false
   loadList()
 }
 
@@ -235,11 +241,22 @@ const batchDelete = async () => {
   loadList()
 }
 
-// 批量恢复
+// 批量放弃（仅对 active 状态生效）
+const batchAbandon = async () => {
+  const targets = selectedRows.value.filter(r => r.status === 'active')
+  await ElMessageBox.confirm(`确认放弃选中的 ${targets.length} 条进行中记录？`, '提示', { type: 'warning' })
+  for (const r of targets) await predictionApi.abandon(r.id)
+  ElMessage.success(`已放弃 ${targets.length} 条`)
+  selectedRows.value = []
+  loadList()
+}
+
+// 批量恢复（仅对 abandoned 状态生效）
 const batchRestore = async () => {
-  const ids = selectedRows.value.map(r => r.id)
+  const targets = selectedRows.value.filter(r => r.status === 'abandoned')
+  const ids = targets.map(r => r.id)
   await predictionApi.restore(ids)
-  ElMessage.success('已恢复')
+  ElMessage.success(`已恢复 ${ids.length} 条`)
   selectedRows.value = []
   loadList()
 }

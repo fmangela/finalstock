@@ -1,16 +1,38 @@
+// 回测路由
+// POST /run 为重型接口，已在 app.js 中加了额外限流
 const router = require('express').Router();
+const { body, validationResult } = require('express-validator');
 const backtestController = require('../controllers/backtestController');
 
-router.get('/stocks', backtestController.getBacktestStocks);  // 获取可回测的股票
-router.get('/configs', backtestController.getConfigs);        // 获取配置列表
-router.post('/configs', backtestController.createConfig);     // 创建配置
-router.put('/configs/:id', backtestController.updateConfig);  // 更新配置
-router.delete('/configs/:id', backtestController.deleteConfig); // 删除配置
+// 统一校验结果处理：有错误时返回第一条错误信息
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ code: 400, message: errors.array()[0].msg });
+  next();
+};
 
-router.get('/results', backtestController.getResults);        // 获取结果列表
-router.get('/results/:id', backtestController.getResult);     // 获取单条结果
-router.delete('/results/:id', backtestController.deleteResult); // 删除结果
+// POST /run 的入参校验规则
+const runRules = [
+  body('stock_code').notEmpty().withMessage('stock_code 不能为空'),
+  body('start_date').isDate().withMessage('start_date 格式无效'),
+  body('end_date').isDate().withMessage('end_date 格式无效'),
+  body('initial_capital').optional().isFloat({ min: 1000 }).withMessage('initial_capital 最小 1000'),
+  body('strategy_type').optional().isIn(['ma', 'rsi', 'macd', 'boll', 'breakout']).withMessage('strategy_type 无效')
+];
 
-router.post('/run', backtestController.runBacktest);          // 执行回测
+// 回测配置 CRUD
+router.get('/stocks', backtestController.getBacktestStocks);
+router.get('/configs', backtestController.getConfigs);
+router.post('/configs', backtestController.createConfig);
+router.put('/configs/:id', backtestController.updateConfig);
+router.delete('/configs/:id', backtestController.deleteConfig);
+
+// 回测结果 CRUD
+router.get('/results', backtestController.getResults);
+router.get('/results/:id', backtestController.getResult);
+router.delete('/results/:id', backtestController.deleteResult);
+
+// 执行回测（校验通过后才进入控制器）
+router.post('/run', runRules, validate, backtestController.runBacktest);
 
 module.exports = router;

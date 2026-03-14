@@ -1,7 +1,11 @@
+// 系统配置路由
+// 所有配置项统一存储在 system_configs 表，按 config_group + config_key 分组
 const router = require('express').Router();
 const { SystemConfig } = require('../models');
 const scheduler = require('../services/scheduler');
 
+// 获取全部配置，按分组聚合为嵌套对象返回
+// 返回格式：{ news: { sync_enabled: '1', ... }, llm_config: { ... } }
 router.get('/all', async (req, res) => {
   try {
     const configs = await SystemConfig.findAll();
@@ -16,6 +20,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
+// 保存单条配置（不存在则创建，已存在则更新）
 router.post('/save', async (req, res) => {
   try {
     const { config_group, config_key, config_value } = req.body;
@@ -30,7 +35,7 @@ router.post('/save', async (req, res) => {
   }
 });
 
-// 重新加载新闻同步调度（保存同步配置后调用）
+// 重新加载新闻同步调度（前端修改同步频率后调用，立即生效）
 router.post('/reload-sync', async (req, res) => {
   try {
     await scheduler.reloadNewsSyncSchedule();

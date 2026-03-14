@@ -1,10 +1,21 @@
-const isDev = process.env.NODE_ENV === 'development';
+// 日志工具模块，基于 winston 封装
+// 统一格式：时间戳 + 级别 + 消息，异常时附带堆栈信息
+// 日志级别由环境变量 LOG_LEVEL 控制，默认 info
+const { createLogger, format, transports } = require('winston');
 
-const logger = {
-  info: (...args) => console.log('[INFO]', new Date().toISOString(), ...args),
-  warn: (...args) => console.warn('[WARN]', new Date().toISOString(), ...args),
-  error: (...args) => console.error('[ERROR]', new Date().toISOString(), ...args),
-  debug: (...args) => { if (isDev) console.log('[DEBUG]', new Date().toISOString(), ...args); }
-};
+const logger = createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: format.combine(
+    format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    format.errors({ stack: true }),
+    // 有堆栈时附加堆栈，方便排查异常
+    format.printf(({ timestamp, level, message, stack }) =>
+      stack
+        ? `${timestamp} [${level.toUpperCase()}] ${message}\n${stack}`
+        : `${timestamp} [${level.toUpperCase()}] ${message}`
+    )
+  ),
+  transports: [new transports.Console()]
+});
 
 module.exports = logger;

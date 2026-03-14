@@ -1,7 +1,9 @@
+// 选股提示词路由
+// 提示词模板用于 AI 选股时构建发给 LLM 的消息，支持多套模板切换
 const router = require('express').Router();
 const { StockPrompt } = require('../models');
 
-// 获取提示词列表
+// 获取提示词列表（按 ID 倒序，最新创建的排前面）
 router.get('/list', async (req, res) => {
   try {
     const prompts = await StockPrompt.findAll({ order: [['id', 'DESC']] });

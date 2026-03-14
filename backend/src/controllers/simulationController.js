@@ -1,6 +1,9 @@
+// 模拟交易控制器
+// 使用虚拟资金进行买卖操作，记录持仓和盈亏，不涉及真实资金
 const { SimulationAccount, SimulationPosition } = require('../models');
-const DataService = require('../services/DataService');
 
+// 获取模拟账户信息（资金、盈亏、胜率等）
+// 若账户不存在则自动初始化（初始资金 100 万）
 exports.getAccount = async (req, res) => {
   try {
     let account = await SimulationAccount.findOne({ where: { id: 1 } });
@@ -13,6 +16,7 @@ exports.getAccount = async (req, res) => {
   }
 };
 
+// 获取持仓列表，可按状态过滤（holding=持有中 / sold=已卖出）
 exports.getPositions = async (req, res) => {
   try {
     const { status } = req.query;
@@ -27,11 +31,13 @@ exports.getPositions = async (req, res) => {
   }
 };
 
+// 模拟买入：扣减可用资金，创建持仓记录
 exports.buy = async (req, res) => {
   try {
     const { stock_code, stock_name, shares, price, prediction_id } = req.body;
     const account = await SimulationAccount.findOne({ where: { id: 1 } });
     const cost = price * shares;
+    // 资金不足时拒绝买入
     if (account.current_capital < cost) {
       return res.status(400).json({ code: 400, message: '资金不足' });
     }
@@ -45,6 +51,7 @@ exports.buy = async (req, res) => {
       current_price: price,
       status: 'holding'
     });
+    // 扣减账户可用资金
     await account.update({ current_capital: account.current_capital - cost });
     res.json({ code: 0, data: position });
   } catch (e) {
@@ -52,6 +59,7 @@ exports.buy = async (req, res) => {
   }
 };
 
+// 模拟卖出：计算盈亏，更新持仓状态和账户统计
 exports.sell = async (req, res) => {
   try {
     const { position_id, price } = req.body;
@@ -59,6 +67,7 @@ exports.sell = async (req, res) => {
     if (!position) return res.status(404).json({ code: 404, message: '持仓不存在' });
     if (position.status === 'sold') return res.status(400).json({ code: 400, message: '已卖出' });
 
+    // 计算本次交易盈亏：(卖出价 - 买入价) × 股数
     const profit_loss = (price - position.buy_price) * position.shares;
     await position.update({
       status: 'sold',
@@ -67,14 +76,15 @@ exports.sell = async (req, res) => {
       profit_loss
     });
 
+    // 更新账户：回收卖出资金，累计盈亏和交易次数
     const account = await SimulationAccount.findOne({ where: { id: 1 } });
     const proceeds = price * position.shares;
     const isWin = profit_loss > 0;
     await account.update({
-      current_capital: +account.current_capital + proceeds,
+      current_capital:   +account.current_capital + proceeds,
       total_profit_loss: +account.total_profit_loss + profit_loss,
-      total_trades: account.total_trades + 1,
-      win_trades: account.win_trades + (isWin ? 1 : 0)
+      total_trades:      account.total_trades + 1,
+      win_trades:        account.win_trades + (isWin ? 1 : 0)
     });
 
     res.json({ code: 0, data: { position, profit_loss } });

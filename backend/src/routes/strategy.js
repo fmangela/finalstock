@@ -1,17 +1,23 @@
+// 策略管理路由
+// 策略（BacktestStrategy）：系统内置的技术指标策略元数据
+// 策略实例（StrategyInstance）：用户保存的参数组合，可收藏复用
 const router = require('express').Router();
 const strategyController = require('../controllers/strategyController');
 
-router.get('/strategies', strategyController.getStrategies);  // 获取策略列表
-router.get('/strategies/:id', strategyController.getStrategyDetail);  // 获取策略详情
-router.post('/strategies', strategyController.createStrategy);  // 创建策略
-router.put('/strategies/:id', strategyController.updateStrategy);  // 更新策略
-router.delete('/strategies/:id', strategyController.deleteStrategy);  // 删除策略
+// 策略 CRUD
+router.get('/strategies', strategyController.getStrategies);
+router.get('/strategies/:id', strategyController.getStrategyDetail); // 含参数定义
+router.post('/strategies', strategyController.createStrategy);
+router.put('/strategies/:id', strategyController.updateStrategy);
+router.delete('/strategies/:id', strategyController.deleteStrategy);
 
-router.post('/params', strategyController.addParam);  // 添加策略参数
+// 策略参数定义（供前端动态渲染表单）
+router.post('/params', strategyController.addParam);
 
-router.get('/instances', strategyController.getInstances);  // 获取实例列表
-router.post('/instances', strategyController.createInstance);  // 创建实例
-router.put('/instances/:id', strategyController.updateInstance);  // 更新实例
-router.delete('/instances/:id', strategyController.deleteInstance);  // 删除实例
+// 策略实例 CRUD（用户自定义参数组合）
+router.get('/instances', strategyController.getInstances);
+router.post('/instances', strategyController.createInstance);
+router.put('/instances/:id', strategyController.updateInstance);
+router.delete('/instances/:id', strategyController.deleteInstance);
 
 module.exports = router;

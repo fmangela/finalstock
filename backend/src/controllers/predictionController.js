@@ -1,22 +1,26 @@
+// AI 选股控制器
+// 核心流程：读取提示词 → 可选附加要闻/大盘数据 → 调用 LLM → 解析返回结果
+// 用户确认后批量保存到 stock_predictions 表进行后续跟踪
 const axios = require('axios');
 const sequelize = require('../config/database');
 const { StockPrediction, StockPrompt, StockNews, SystemConfig } = require('../models');
 
+// 获取选股记录列表，支持按状态过滤和多字段排序
 exports.getList = async (req, res) => {
   try {
     const { status, page = 1, pageSize = 20, sortField, sortOrder } = req.query;
     const where = status ? { status } : {};
 
-    // 排序字段映射，stock_code 需要转数字排序
+    // 排序字段映射：stock_code 需转为数字排序，避免字符串排序导致顺序错误
     const fieldMap = {
-      stock_code: sequelize.literal('CAST(stock_code AS UNSIGNED)'),
-      stock_name: 'stock_name',
-      stockup_date: 'stockup_date',
+      stock_code:         sequelize.literal('CAST(stock_code AS UNSIGNED)'),
+      stock_name:         'stock_name',
+      stockup_date:       'stockup_date',
       observation_period: 'observation_period',
-      prompt_name: 'prompt_name',
-      llm_model: 'llm_model',
-      confidence: 'confidence',
-      status: 'status'
+      prompt_name:        'prompt_name',
+      llm_model:          'llm_model',
+      confidence:         'confidence',
+      status:             'status'
     };
 
     const orderField = fieldMap[sortField] || 'stockup_date';
@@ -34,6 +38,7 @@ exports.getList = async (req, res) => {
   }
 };
 
+// 手动新增一条选股记录（不经过 LLM，直接由用户填写）
 exports.generate = async (req, res) => {
   try {
     const { stock_code, stock_name, target_price, stop_loss, confidence, reason, llm_model, llm_params } = req.body;
@@ -55,6 +60,7 @@ exports.generate = async (req, res) => {
   }
 };
 
+// 放弃跟踪某条选股记录（状态改为 abandoned）
 exports.abandon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -67,6 +73,7 @@ exports.abandon = async (req, res) => {
   }
 };
 
+// 手动更新选股状态（success / failed / abandoned）及实际结果备注
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -80,12 +87,13 @@ exports.updateStatus = async (req, res) => {
   }
 };
 
-// 执行AI选股：调用大模型，返回匹配股票列表（不保存）
+// 执行 AI 选股：调用大模型，返回推荐股票列表（仅返回，不保存）
+// 流程：读取 LLM 配置 → 读取提示词 → 可选附加要闻/大盘 → 调用 API → 解析 JSON
 exports.execute = async (req, res) => {
   try {
     const { prompt_id, observation_period } = req.body;
 
-    // 读取大模型配置
+    // 读取大模型配置（provider / api_url / api_key / model_name）
     const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
     const cfg = {};
     configs.forEach(c => { cfg[c.config_key] = c.config_value; });
@@ -94,14 +102,14 @@ exports.execute = async (req, res) => {
       return res.json({ code: 1, message: '请先在设置中配置大模型参数' });
     }
 
-    // 读取提示词
+    // 读取提示词模板
     const prompt = await StockPrompt.findByPk(prompt_id);
     if (!prompt) return res.status(404).json({ code: 404, message: '提示词不存在' });
 
-    // 构建用户消息：内容 + 要闻 + 股市信息 + 返回格式要求
+    // 构建用户消息：提示词正文 + 可选的要闻 + 可选的大盘数据 + 输出格式要求
     let userMsg = prompt.content || '';
-    
-    // 如果提示词配置了推送要闻，获取最新的财经要闻
+
+    // 如果提示词配置了推送要闻，附加最近 5 条财经新闻标题
     if (prompt.push_news) {
       const newsList = await StockNews.findAll({
         order: [['pub_date', 'DESC']],
@@ -115,8 +123,8 @@ exports.execute = async (req, res) => {
         });
       }
     }
-    
-    // 如果提示词配置了推送股市信息，获取大盘概览
+
+    // 如果提示词配置了推送股市信息，附加三大指数当日行情
     if (prompt.push_stock_info) {
       try {
         const DataService = require('../services/DataService');
@@ -128,19 +136,18 @@ exports.execute = async (req, res) => {
           userMsg += `创业板指: ${marketData.cyIndex?.price?.toFixed(2) || '-'} (${marketData.cyIndex?.change_pct?.toFixed(2) || '-'}%)\n`;
         }
       } catch (e) {
-        console.error('获取大盘数据失败:', e.message);
+        require('../utils/logger').error('获取大盘数据失败:', e.message);
       }
     }
 
-    // 添加返回格式要求（重要：放在最后，确保模型按要求格式输出）
+    // 输出格式要求放在消息最后，确保模型按指定 JSON 格式输出
     if (prompt.output_format) {
       userMsg += '\n\n' + prompt.output_format;
     }
 
-    // 构建消息
     const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票。';
 
-    // 代理配置 - 国内API直接禁用代理
+    // 国内 API 直接禁用代理，避免走系统代理导致请求失败
     const axiosConfig = {
       headers: { Authorization: `Bearer ${api_key}`, 'Content-Type': 'application/json' },
       timeout: 60000,
@@ -158,24 +165,24 @@ exports.execute = async (req, res) => {
 
     const rawContent = llmRes.data?.choices?.[0]?.message?.content || '';
 
-    // 解析JSON，兼容markdown代码块包裹
+    // 解析模型返回的 JSON，兼容 markdown 代码块包裹（```json ... ```）
     let parsed = { stocks: [], analysis: '' };
     try {
       const jsonStr = rawContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       parsed = JSON.parse(jsonStr);
     } catch (_) {
-      // 解析失败时返回原始内容，stocks为空
+      // 解析失败时 stocks 为空，前端展示原始内容供用户参考
     }
 
     res.json({
       code: 0,
       data: {
-        raw_response: rawContent,
-        stocks: parsed.stocks || [],
-        analysis: parsed.analysis || '',
-        prompt_id: prompt.id,
-        prompt_name: prompt.name,
-        llm_model: model_name,
+        raw_response:       rawContent,
+        stocks:             parsed.stocks || [],
+        analysis:           parsed.analysis || '',
+        prompt_id:          prompt.id,
+        prompt_name:        prompt.name,
+        llm_model:          model_name,
         observation_period: observation_period || '一月'
       }
     });
@@ -185,7 +192,8 @@ exports.execute = async (req, res) => {
   }
 };
 
-// 确认选股：将用户勾选的股票批量保存到 stock_predictions
+// 确认选股：将用户勾选的股票批量保存到 stock_predictions 表
+// 若该股票已有记录则更新（重置为 active），否则新建
 exports.confirm = async (req, res) => {
   try {
     const { stocks, prompt_id, prompt_name, llm_model, llm_response, observation_period } = req.body;
@@ -195,35 +203,32 @@ exports.confirm = async (req, res) => {
 
     const now = new Date();
     const results = [];
-    
+
     for (const s of stocks) {
-      // 不管之前状态是什么，都更新为最新选股记录
-      const existing = await StockPrediction.findOne({ 
-        where: { stock_code: s.code }
-      });
-      
+      const existing = await StockPrediction.findOne({ where: { stock_code: s.code } });
+
       if (existing) {
-        // 更新所有信息，状态改为进行中(active)
+        // 已有记录：更新所有字段，状态重置为进行中
         await existing.update({
-          stockup_date: now,
-          stock_name: s.name,
-          reason: s.reason || existing.reason,
+          stockup_date:       now,
+          stock_name:         s.name,
+          reason:             s.reason || existing.reason,
           llm_model,
           prompt_id,
-          prompt_name: prompt_name || existing.prompt_name,
-          llm_response: llm_response || existing.llm_response,
+          prompt_name:        prompt_name || existing.prompt_name,
+          llm_response:       llm_response || existing.llm_response,
           observation_period: observation_period || existing.observation_period,
-          status: 'active'  // 无论之前状态是什么，都改为进行中
+          status:             'active'
         });
         results.push(existing);
       } else {
-        // 新增记录
+        // 新股票：创建记录
         const record = await StockPrediction.create({
-          stock_code: s.code,
-          stock_name: s.name,
-          stockup_date: now,
-          reason: s.reason || '',
-          status: 'active',
+          stock_code:         s.code,
+          stock_name:         s.name,
+          stockup_date:       now,
+          reason:             s.reason || '',
+          status:             'active',
           llm_model,
           prompt_id,
           prompt_name,
@@ -240,7 +245,7 @@ exports.confirm = async (req, res) => {
   }
 };
 
-// 删除单条
+// 删除单条选股记录
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
@@ -251,7 +256,7 @@ exports.delete = async (req, res) => {
   }
 };
 
-// 恢复（批量）- 状态改为active，选股时间改为当前
+// 批量恢复：将指定记录状态改回 active，选股时间重置为当前时间
 exports.restore = async (req, res) => {
   try {
     const { ids } = req.body;
@@ -259,17 +264,17 @@ exports.restore = async (req, res) => {
       return res.json({ code: 1, message: '请选择要恢复的记录' });
     }
     const now = new Date();
-    await StockPrediction.update({
-      status: 'active',
-      stockup_date: now
-    }, { where: { id: ids } });
+    await StockPrediction.update(
+      { status: 'active', stockup_date: now },
+      { where: { id: ids } }
+    );
     res.json({ code: 0, message: `已恢复 ${ids.length} 条` });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }
 };
 
-// 批量删除
+// 批量删除选股记录
 exports.batchDelete = async (req, res) => {
   try {
     const { ids } = req.body;

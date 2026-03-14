@@ -1,5 +1,8 @@
+// 选股提示词控制器（供部分路由直接调用）
+// 提示词模板决定 LLM 选股时的分析角度和输出格式
 const { StockPrompt } = require('../models');
 
+// 获取所有提示词（按创建时间倒序）
 exports.getList = async (req, res) => {
   try {
     const prompts = await StockPrompt.findAll({ order: [['created_at', 'DESC']] });
@@ -9,6 +12,7 @@ exports.getList = async (req, res) => {
   }
 };
 
+// 新增提示词
 exports.create = async (req, res) => {
   try {
     const { name, content, market_type, push_news, push_stock_info, output_format } = req.body;
@@ -19,6 +23,7 @@ exports.create = async (req, res) => {
   }
 };
 
+// 更新提示词内容
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
@@ -32,6 +37,7 @@ exports.update = async (req, res) => {
   }
 };
 
+// 删除提示词
 exports.remove = async (req, res) => {
   try {
     const { id } = req.params;

@@ -1,6 +1,11 @@
+// 策略管理控制器
+// 管理三类数据：
+//   BacktestStrategy  - 策略元数据（名称、类型、描述）
+//   StrategyParam     - 策略参数定义（供前端动态渲染表单）
+//   StrategyInstance  - 用户保存的参数组合（可收藏复用）
 const { BacktestStrategy, StrategyParam, StrategyInstance, BacktestResult } = require('../models');
 
-// 获取所有策略
+// 获取所有策略（按 ID 升序，系统内置策略排在前面）
 exports.getStrategies = async (req, res) => {
   try {
     const strategies = await BacktestStrategy.findAll({ 
@@ -67,7 +72,7 @@ exports.deleteStrategy = async (req, res) => {
   }
 };
 
-// 添加策略参数
+// 为策略添加参数定义（param_name 为字段名，param_label 为前端显示名）
 exports.addParam = async (req, res) => {
   try {
     const { strategy_id, param_name, param_label, param_type, default_value, min_value, max_value, step, options } = req.body;
@@ -78,16 +83,17 @@ exports.addParam = async (req, res) => {
   }
 };
 
-// 获取策略实例列表
+// 获取策略实例列表，按使用次数倒序（常用的排前面）
+// 返回时附加策略名称和类型，避免前端再次查询
 exports.getInstances = async (req, res) => {
   try {
     const { strategy_id } = req.query;
     const where = strategy_id ? { strategy_id } : {};
-    const instances = await StrategyInstance.findAll({ 
+    const instances = await StrategyInstance.findAll({
       where,
       order: [['use_count', 'DESC'], ['created_at', 'DESC']]
     });
-    // 关联策略名称
+    // 批量查询策略信息，构建 id→策略 的映射，避免 N+1 查询
     const strategies = await BacktestStrategy.findAll();
     const strategyMap = {};
     strategies.forEach(s => { strategyMap[s.id] = s; });
@@ -104,7 +110,7 @@ exports.getInstances = async (req, res) => {
   }
 };
 
-// 创建策略实例
+// 创建策略实例（保存一组参数组合，供下次回测直接复用）
 exports.createInstance = async (req, res) => {
   try {
     const { name, strategy_id, params_json, description } = req.body;
@@ -141,7 +147,7 @@ exports.deleteInstance = async (req, res) => {
   }
 };
 
-// 更新实例使用次数
+// 更新实例使用次数（每次回测时调用，用于排序热门实例）
 exports.useInstance = async (id) => {
   const instance = await StrategyInstance.findByPk(id);
   if (instance) {

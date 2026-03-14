@@ -1,5 +1,10 @@
 version: '3.8'
 
+# FinalStock Docker Compose 配置
+# 包含两个服务：MariaDB 数据库 + Node.js 后端
+# 启动命令：docker compose up -d
+# 首次启动会自动执行 database/init.sql 初始化表结构
+
 services:
   # MariaDB 数据库
   mariadb:
@@ -12,20 +17,21 @@ services:
       MYSQL_USER: ${DB_USER:-openclaw}
       MYSQL_PASSWORD: ${DB_PASSWORD:-ocoper}
     volumes:
-      - mariadb_data:/var/lib/mysql
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - mariadb_data:/var/lib/mysql                              # 数据持久化
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql # 首次启动自动建表
     ports:
       - "3306:3306"
     networks:
       - finalstock-network
     healthcheck:
+      # 等待 InnoDB 完全初始化后再启动后端，避免连接失败
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
 
-  # 后端服务
+  # 后端服务（依赖数据库健康检查通过后才启动）
   backend:
     build:
       context: ./backend
@@ -34,7 +40,7 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
-      - DB_HOST=mariadb
+      - DB_HOST=mariadb          # 容器内通过服务名访问数据库
       - DB_PORT=3306
       - DB_NAME=${DB_NAME:-openclaw}
       - DB_USER=${DB_USER:-openclaw}
@@ -47,29 +53,14 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       mariadb:
-        condition: service_healthy
+        condition: service_healthy  # 等待数据库就绪
     ports:
       - "3000:3000"
     networks:
       - finalstock-network
 
-  # 前端 Nginx
-  frontend:
-    image: nginx:alpine
-    container_name: finalstock-frontend
-    restart: always
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    networks:
-      - finalstock-network
-
 volumes:
-  mariadb_data:
+  mariadb_data:   # 数据库数据卷，容器重建后数据不丢失
 
 networks:
   finalstock-network:

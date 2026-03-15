@@ -6,56 +6,78 @@ const { SystemConfig } = require('../models');
 const axios = require('axios');
 
 // 内置提供商列表：前端下拉选择后自动填充 baseUrl 和可用模型
+// web_search_support: 是否支持联网搜索
+// web_search_models: 支持联网搜索的模型列表（为空表示全部支持）
 const LLM_PROVIDERS = {
   'siliconflow': {
     name: '硅基流动 (SiliconFlow)',
     baseUrl: 'https://api.siliconflow.cn/v1',
-    models: 'Qwen/Qwen2.5-7B-Instruct,Qwen/Qwen2.5-14B-Instruct,Qwen/Qwen2.5-72B-Instruct,THUDG/glm-4-9b-chat,THUDG/glm-4-32k-chat,deepseek-ai/DeepSeek-V2-Chat,deepseek-ai/DeepSeek-Coder-V2-Instruct,meta-llama/Meta-Llama-3.1-70B-Instruct,meta-llama/Meta-Llama-3.1-8B-Instruct'
+    models: 'Qwen/Qwen2.5-7B-Instruct,Qwen/Qwen2.5-14B-Instruct,Qwen/Qwen2.5-72B-Instruct,Qwen/Qwen2.5-72B-Instruct-128K,deepseek-ai/DeepSeek-V3,deepseek-ai/DeepSeek-R1,THUDM/glm-4-9b-chat,meta-llama/Meta-Llama-3.1-70B-Instruct',
+    web_search_support: false,
+    web_search_note: '不支持内置联网搜索，需自行实现搜索工具'
   },
   'qwen': {
     name: '阿里通义千问',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    modelKey: 'qwen-turbo,qwen-plus,qwen-max,qwen-max-longcontext'
+    models: 'qwen-turbo,qwen-plus,qwen-max,qwen-long,qwen3-235b-a22b,qwen3-32b,qwen3-14b,qwen3-8b',
+    web_search_support: true,
+    web_search_note: '通过 enable_search:true 参数启用，支持 qwen-turbo/plus/max 等主流模型'
   },
   'ernie': {
     name: '百度文心一言',
     baseUrl: 'https://qianfan.baidubce.com/v2',
-    modelKey: 'ernie-4.0-8k,ernie-3.5-8k,ernie-speed-8k'
+    models: 'ernie-4.0-8k,ernie-4.0-turbo-8k,ernie-3.5-8k,ernie-3.5-128k,ernie-speed-8k,ernie-speed-128k',
+    web_search_support: true,
+    web_search_note: '默认开启联网搜索，可通过 disable_search:false 控制'
   },
   'glm': {
     name: '智谱GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    modelKey: 'glm-4,glm-4-flash,glm-4-plus,glm-3-turbo'
+    models: 'glm-4,glm-4-plus,glm-4-air,glm-4-flash,glm-4-long,glm-z1-flash',
+    web_search_support: true,
+    web_search_note: '通过 tools 数组传入 web_search 工具启用，支持 GLM-4 系列'
   },
   'hunyuan': {
     name: '腾讯混元',
     baseUrl: 'https://hunyuan.cloud.tencent.com/api/v3',
-    modelKey: 'hunyuan-pro,hunyuan-standard'
+    models: 'hunyuan-turbos-latest,hunyuan-t1-latest,hunyuan-pro,hunyuan-standard,hunyuan-lite',
+    web_search_support: true,
+    web_search_note: '通过 enable_search:true 参数启用，hunyuan-lite 不支持'
   },
   'moonshot': {
     name: '月之暗面(Moonshot)',
     baseUrl: 'https://api.moonshot.cn/v1',
-    modelKey: 'moonshot-v1-8k,moonshot-v1-32k,moonshot-v1-128k'
+    models: 'kimi-k2-0711-preview,moonshot-v1-8k,moonshot-v1-32k,moonshot-v1-128k',
+    web_search_support: true,
+    web_search_note: '仅 kimi-k2 系列支持内置联网搜索，通过 tools 传入 $web_search 工具'
   },
   'baichuan': {
     name: '百川智能',
     baseUrl: 'https://api.baichuan-ai.com/v1',
-    modelKey: 'Baichuan4,Baichuan3-Turbo,Baichuan2-Turbo'
+    models: 'Baichuan4,Baichuan4-Air,Baichuan3-Turbo,Baichuan3-Turbo-128k,Baichuan2-Turbo',
+    web_search_support: true,
+    web_search_note: '通过 with_search_enhance:true 参数启用，注意会产生额外费用'
   },
   'sensetime': {
     name: '商汤日日新',
     baseUrl: 'https://api.sensetime.com/v1',
-    modelKey: 'SenseChat-5-Systems,SenseChat-5,SenseChat-3.5'
+    models: 'SenseChat-5-Systems,SenseChat-5,SenseChat-3.5',
+    web_search_support: false,
+    web_search_note: '不支持内置联网搜索'
   },
   'deepseek': {
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    modelKey: 'deepseek-chat,deepseek-coder'
+    models: 'deepseek-chat,deepseek-reasoner',
+    web_search_support: false,
+    web_search_note: '官方 API 不支持内置联网搜索，需自行实现搜索工具'
   },
   'custom': {
     name: '自定义',
     baseUrl: '',
-    modelKey: ''
+    models: '',
+    web_search_support: false,
+    web_search_note: ''
   }
 };
 
@@ -73,15 +95,16 @@ router.get('/get', async (req, res) => {
   }
 });
 
-// 保存 LLM 配置（provider / api_url / api_key / model_name）
+// 保存 LLM 配置（provider / api_url / api_key / model_name / web_search_enabled）
 router.post('/save', async (req, res) => {
   try {
-    const { provider, api_url, api_key, model_name } = req.body;
+    const { provider, api_url, api_key, model_name, web_search_enabled } = req.body;
     const items = [
       { key: 'provider', value: provider },
       { key: 'api_url', value: api_url },
       { key: 'api_key', value: api_key },
-      { key: 'model_name', value: model_name }
+      { key: 'model_name', value: model_name },
+      { key: 'web_search_enabled', value: web_search_enabled ? '1' : '0' }
     ];
     for (const item of items) {
       await SystemConfig.findOrCreate({

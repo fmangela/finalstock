@@ -21,10 +21,10 @@
 
         <!-- LLM配置 -->
         <el-tab-pane label="LLM配置" name="llm_config">
-          <el-form :model="llmForm" label-width="120px" style="max-width:560px">
-            <el-form-item label="预设模型">
-              <el-select v-model="llmPreset" placeholder="选择预设" clearable @change="applyPreset" style="width:100%">
-                <el-option v-for="p in llmPresets" :key="p.value" :label="p.label" :value="p.value" />
+          <el-form :model="llmForm" label-width="120px" style="max-width:600px">
+            <el-form-item label="预设提供商">
+              <el-select v-model="llmPreset" placeholder="选择预设提供商" clearable @change="applyPreset" style="width:100%">
+                <el-option v-for="(p, key) in llmProviders" :key="key" :label="p.name" :value="key" />
               </el-select>
             </el-form-item>
             <el-form-item label="API地址">
@@ -34,7 +34,23 @@
               <el-input v-model="llmForm.api_key" type="password" show-password />
             </el-form-item>
             <el-form-item label="模型名称">
-              <el-input v-model="llmForm.model_name" placeholder="gpt-4" />
+              <el-select
+                v-if="currentProviderModels.length > 0"
+                v-model="llmForm.model_name"
+                placeholder="选择模型"
+                allow-create
+                filterable
+                style="width:100%"
+              >
+                <el-option v-for="m in currentProviderModels" :key="m" :label="m" :value="m" />
+              </el-select>
+              <el-input v-else v-model="llmForm.model_name" placeholder="输入模型名称" />
+            </el-form-item>
+            <el-form-item label="联网搜索">
+              <el-switch v-model="llmForm.web_search_enabled" :disabled="!currentProviderWebSearch" />
+              <span style="margin-left:10px;font-size:12px;" :style="{ color: currentProviderWebSearch ? '#67c23a' : '#909399' }">
+                {{ currentProviderWebSearchNote }}
+              </span>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveLlmConfig" :loading="saving">保存</el-button>
@@ -232,25 +248,48 @@ const configs = ref({
 })
 
 // LLM config
-const llmForm = ref({ api_url: '', api_key: '', model_name: '' })
+const llmForm = ref({ api_url: '', api_key: '', model_name: '', web_search_enabled: false })
 const llmPreset = ref('')
-const llmPresets = [
-  { label: '硅基流动 (SiliconFlow)', value: 'https://api.siliconflow.cn/v1/chat/completions' },
-  { label: '百度文心一言', value: 'https://qianfan.baidubce.com/v2/chat/completions' },
-  { label: '阿里通义千问', value: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' },
-  { label: '智谱GLM', value: 'https://open.bigmodel.cn/api/paas/v4/chat/completions' },
-  { label: '腾讯混元', value: 'https://hunyuan.cloud.tencent.com/api/v3/chat/completions' },
-  { label: '月之暗面(Moonshot)', value: 'https://api.moonshot.cn/v1/chat/completions' },
-  { label: '百川智能', value: 'https://api.baichuan-ai.com/v1/chat/completions' },
-  { label: 'OpenAI', value: 'https://api.openai.com/v1/chat/completions' }
-]
+const llmProviders = ref({})
 
-const applyPreset = (url) => { if (url) llmForm.value.api_url = url }
+// 从后端加载 providers 列表（含 web_search_support 等元数据）
+const loadLlmProviders = async () => {
+  try {
+    const res = await llmConfigApi.get()
+    if (res?.data?.providers) llmProviders.value = res.data.providers
+  } catch (_) {}
+}
+
+// 当前选中 provider 的模型列表
+const currentProviderModels = computed(() => {
+  const p = llmProviders.value[llmPreset.value]
+  if (!p?.models) return []
+  return p.models.split(',').map(m => m.trim()).filter(Boolean)
+})
+
+// 当前 provider 是否支持联网搜索
+const currentProviderWebSearch = computed(() => {
+  return llmProviders.value[llmPreset.value]?.web_search_support ?? false
+})
+
+const currentProviderWebSearchNote = computed(() => {
+  const p = llmProviders.value[llmPreset.value]
+  if (!p) return '请先选择提供商'
+  return p.web_search_note || (p.web_search_support ? '支持联网搜索' : '不支持联网搜索')
+})
+
+const applyPreset = (key) => {
+  const p = llmProviders.value[key]
+  if (!p) return
+  llmForm.value.api_url = `${p.baseUrl}/chat/completions`
+  // 切换 provider 时，若不支持联网则自动关闭开关
+  if (!p.web_search_support) llmForm.value.web_search_enabled = false
+}
 
 const saveLlmConfig = async () => {
   saving.value = true
   try {
-    await llmConfigApi.save(llmForm.value)
+    await llmConfigApi.save({ ...llmForm.value, provider: llmPreset.value })
     ElMessage.success('保存成功')
   } finally {
     saving.value = false
@@ -260,9 +299,8 @@ const saveLlmConfig = async () => {
 const testLlmConfig = async () => {
   testing.value = true
   try {
-    // 传递当前表单数据
     const res = await llmConfigApi.test({
-      provider: llmPreset.value ? llmPreset.value.split('/').pop() || 'custom' : 'custom',
+      provider: llmPreset.value || 'custom',
       api_url: llmForm.value.api_url,
       api_key: llmForm.value.api_key,
       model_name: llmForm.value.model_name
@@ -411,7 +449,13 @@ const loadConfigs = async () => {
     if (d.log) logEnabled.value = d.log.enabled === '1'
   }
   if (llmRes?.data) {
-    llmForm.value = { api_url: llmRes.data.api_url || '', api_key: llmRes.data.api_key || '', model_name: llmRes.data.model_name || '' }
+    llmForm.value = {
+      api_url: llmRes.data.api_url || '',
+      api_key: llmRes.data.api_key || '',
+      model_name: llmRes.data.model_name || '',
+      web_search_enabled: llmRes.data.web_search_enabled === '1'
+    }
+    if (llmRes.data.provider) llmPreset.value = llmRes.data.provider
   }
 }
 
@@ -488,7 +532,7 @@ const saveLogEnabled = async (val) => {
 
 watch(activeTab, (tab) => { if (tab === 'logs') loadLogs() })
 
-onMounted(() => { loadConfigs(); loadPrompts() })
+onMounted(() => { loadLlmProviders(); loadConfigs(); loadPrompts() })
 </script>
 
 <style scoped>

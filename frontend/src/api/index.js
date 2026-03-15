@@ -53,7 +53,7 @@ export const promptApi = {
 export const llmConfigApi = {
   get:  () => http.get('/llm-config/get'),
   save: (data) => http.post('/llm-config/save', data),
-  test: () => http.post('/llm-config/test')  // 连接测试
+  test: (data) => http.post('/llm-config/test', data)  // 连接测试
 }
 
 // ── 模拟交易 API ──────────────────────────────────────────────

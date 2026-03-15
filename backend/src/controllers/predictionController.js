@@ -5,6 +5,59 @@ const axios = require('axios');
 const sequelize = require('../config/database');
 const { StockPrediction, StockPrompt, StockNews, SystemConfig } = require('../models');
 
+// 根据 provider 构建 LLM 请求体，各家 web search 参数格式不同
+function buildLlmRequest({ provider, model_name, systemMsg, userMsg, webSearchEnabled }) {
+  const messages = [
+    { role: 'system', content: systemMsg },
+    { role: 'user', content: userMsg }
+  ];
+  const base = { model: model_name, messages, temperature: 0.7 };
+
+  if (!webSearchEnabled) return base;
+
+  switch (provider) {
+    // 阿里通义千问：顶层字段 enable_search
+    case 'qwen':
+      return { ...base, enable_search: true };
+
+    // 百度文心一言：默认开启，disable_search:false 明确启用
+    case 'ernie':
+      return { ...base, disable_search: false, enable_citation: false };
+
+    // 智谱GLM：tools 数组传入 web_search 工具
+    case 'glm':
+      return {
+        ...base,
+        tools: [{
+          type: 'web_search',
+          web_search: { enable: 'True', search_result: 'True', count: '5' }
+        }]
+      };
+
+    // 腾讯混元：顶层字段 enable_search（OpenAI 兼容接口）
+    case 'hunyuan':
+      return { ...base, enable_search: true };
+
+    // 月之暗面 Kimi K2：tools 传入内置 $web_search 工具
+    case 'moonshot':
+      return {
+        ...base,
+        tools: [{
+          type: 'builtin_function',
+          function: { name: '$web_search' }
+        }]
+      };
+
+    // 百川：顶层字段 with_search_enhance
+    case 'baichuan':
+      return { ...base, with_search_enhance: true };
+
+    // SiliconFlow / DeepSeek / 其他：不支持内置联网，直接返回基础请求
+    default:
+      return base;
+  }
+}
+
 // 获取选股记录列表，支持按状态过滤和多字段排序
 exports.getList = async (req, res) => {
   try {
@@ -147,6 +200,9 @@ exports.execute = async (req, res) => {
 
     const systemMsg = '你是一位专业的A股投资分析师，请根据用户要求和市场信息推荐股票。';
 
+    // 读取 web search 开关配置
+    const webSearchEnabled = cfg.web_search_enabled === '1';
+
     // 国内 API 直接禁用代理，避免走系统代理导致请求失败
     const axiosConfig = {
       headers: { Authorization: `Bearer ${api_key}`, 'Content-Type': 'application/json' },
@@ -154,14 +210,10 @@ exports.execute = async (req, res) => {
       proxy: false
     };
 
-    const llmRes = await axios.post(api_url, {
-      model: model_name,
-      messages: [
-        { role: 'system', content: systemMsg },
-        { role: 'user', content: userMsg }
-      ],
-      temperature: 0.7
-    }, axiosConfig);
+    // 构建请求体，根据 provider 注入不同的 web search 参数
+    const requestBody = buildLlmRequest({ provider, model_name, systemMsg, userMsg, webSearchEnabled });
+
+    const llmRes = await axios.post(api_url, requestBody, axiosConfig);
 
     const rawContent = llmRes.data?.choices?.[0]?.message?.content || '';
 

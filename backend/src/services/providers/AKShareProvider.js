@@ -156,23 +156,23 @@ class AKShareProvider {
   }
 
   // 获取财经快讯（东方财富快讯接口）
-  // 返回数据可能是 JSON 对象或带 "var ajaxResult=" 前缀的 JSONP 字符串
   async getNews(page = 1, pageSize = 20) {
     try {
       const url = 'https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_50_1_.html';
       const res = await axios.get(url, {
-        timeout: 5000,
-        headers: { 'Accept': 'application/json' }
+        timeout: 8000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.eastmoney.com/'
+        }
       });
       let data = res.data;
       if (typeof data === 'string') {
-        // 去掉 JSONP 包装前缀，提取纯 JSON
         const jsonStr = data.replace(/^var ajaxResult=/, '');
         data = JSON.parse(jsonStr);
       }
       const items = data?.LivesList || [];
       return items.slice(0, pageSize).map(item => ({
-        id:         item.id,
         title:      item.title,
         content:    item.digest || item.title,
         source:     '东方财富',

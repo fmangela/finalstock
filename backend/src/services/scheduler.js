@@ -16,16 +16,15 @@ let newsSyncTask = null;
 async function updateNews() {
   logger.info('[Scheduler] 开始更新新闻...');
   try {
-    const news = await DataService.getNews(1, 50);
+    const news = await fetchNewsFromEnabledSources();
     let created = 0;
     for (const item of news) {
-      // 以标题为唯一键，避免重复插入
       const [, isNew] = await StockNews.findOrCreate({
         where: { title: item.title },
         defaults: {
           content: item.content,
           source: item.source,
-          pub_date: item.pub_date,
+          pub_date: item.pub_date || new Date(),
           sentiment_score: 0,
           importance: 1
         }
@@ -36,6 +35,35 @@ async function updateNews() {
   } catch (e) {
     logger.error(`[Scheduler] 新闻更新失败: ${e.message}`);
   }
+}
+
+// 读取系统配置中勾选的新闻源，并发拉取后合并去重
+async function fetchNewsFromEnabledSources(pageSize = 50) {
+  const config = await SystemConfig.findOne({
+    where: { config_group: 'news', config_key: 'sources' }
+  });
+  let sources = ['eastmoney'];
+  if (config?.config_value) {
+    try { sources = JSON.parse(config.config_value); } catch {}
+  }
+
+  const providers = require('./providers/AKShareNewsProvider');
+  const results = await Promise.allSettled(
+    sources.map(s => providers[s]?.getNews(1, pageSize) ?? Promise.resolve([]))
+  );
+
+  const seen = new Set();
+  const merged = [];
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    for (const item of r.value) {
+      if (item.title && !seen.has(item.title)) {
+        seen.add(item.title);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
 }
 
 // 删除超过保留天数的旧新闻，保留天数从系统配置读取，默认 7 天

@@ -126,9 +126,9 @@
           <el-form :model="configs.news" label-width="130px" style="max-width:600px">
             <el-form-item label="新闻来源">
               <el-checkbox-group v-model="newsSources">
-                <el-checkbox label="eastmoney">东方财富</el-checkbox>
-                <el-checkbox label="cls">财联社</el-checkbox>
-                <el-checkbox label="ths">同花顺</el-checkbox>
+                <el-checkbox value="eastmoney">东方财富</el-checkbox>
+                <el-checkbox value="cls">财联社</el-checkbox>
+                <el-checkbox value="cx">财新</el-checkbox>
               </el-checkbox-group>
             </el-form-item>
             <el-form-item label="新闻保留天数">

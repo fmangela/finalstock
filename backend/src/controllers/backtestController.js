@@ -11,7 +11,7 @@ const calculateStrategySignal = (strategyType, data, index, params) => {
 };
 
 // ========== 主回测函数 ==========
-// 数据来源优先级：新浪 K 线 API → 东方财富历史接口
+// 数据来源：通过 DataService 读取系统配置中选定的数据提供商
 exports.runBacktest = async (req, res) => {
   try {
     const {
@@ -30,16 +30,12 @@ exports.runBacktest = async (req, res) => {
       stop_loss_pct = 0.05, take_profit_pct = 0.15  // 止损 5%，止盈 15%
     } = params;
 
-    // 优先使用新浪接口（历史数据更长），失败则降级到东方财富
-    const SinaStockAPI = require('../services/providers/SinaStockProvider');
+    // 通过 DataService 获取历史数据（遵循系统配置的数据提供商）
+    // 直接传入日期范围，由 Python 脚本按范围拉取，无需估算条数
     let allData = [];
     try {
-      allData = await SinaStockAPI.getKline(stock_code, start_date, end_date);
+      allData = await DataService.getStockHistory(stock_code, 'daily', 2000, start_date, end_date);
     } catch (e) {}
-
-    if (!allData || allData.length === 0) {
-      try { allData = await DataService.getStockHistory(stock_code, 'daily', 500); } catch {}
-    }
 
     if (!allData || allData.length === 0) {
       return res.json({ code: 1, message: '无法获取股票数据' });

@@ -35,9 +35,11 @@
         class="mt-4"
         :total="total"
         :page-size="pageSize"
+        :page-sizes="[20, 50, 100]"
         :current-page="page"
         @current-change="onPageChange"
-        layout="total, prev, pager, next"
+        @size-change="onSizeChange"
+        layout="total, sizes, prev, pager, next"
       />
     </el-card>
 
@@ -48,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { newsApi } from '@/api'
 
 const news = ref([])
@@ -59,6 +61,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const dialogVisible = ref(false)
 const selectedNews = ref(null)
+let autoRefreshTimer = null
 
 const sentimentType = (score) => {
   if (score > 0) return 'success'
@@ -73,7 +76,7 @@ const loadNews = async () => {
   try {
     const res = await newsApi.getList({ page: page.value, pageSize: pageSize.value })
     news.value = res?.data || []
-    total.value = news.value.length
+    total.value = res?.total ?? news.value.length
   } finally {
     loading.value = false
   }
@@ -83,6 +86,7 @@ const refresh = async () => {
   refreshing.value = true
   try {
     await newsApi.refresh()
+    page.value = 1
     await loadNews()
   } finally {
     refreshing.value = false
@@ -90,9 +94,22 @@ const refresh = async () => {
 }
 
 const onPageChange = (p) => { page.value = p; loadNews() }
+const onSizeChange = (s) => { pageSize.value = s; page.value = 1; loadNews() }
 const viewNews = (item) => { selectedNews.value = item; dialogVisible.value = true }
 
-onMounted(loadNews)
+onMounted(() => {
+  loadNews()
+  // 每5分钟静默拉取一次最新数据（只更新第一页）
+  autoRefreshTimer = setInterval(async () => {
+    if (page.value === 1 && !loading.value && !refreshing.value) {
+      await loadNews()
+    }
+  }, 5 * 60 * 1000)
+})
+
+onUnmounted(() => {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer)
+})
 </script>
 
 <style scoped>

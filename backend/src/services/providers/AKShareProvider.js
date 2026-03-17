@@ -1,8 +1,12 @@
 // 东方财富数据 Provider
-// 通过东方财富公开 HTTP 接口获取 A 股行情、K 线、大盘指数和财经新闻
-// 字段含义参考东方财富 API 文档（f43=现价×100，f58=股票名称，等）
+// 实时行情/股票列表/大盘概览通过东方财富 HTTP 接口获取
+// 历史 K 线通过 Python 子进程调用 AKShare（腾讯数据源）获取，规避网络限制
 const axios = require('axios');
+const { execFile } = require('child_process');
+const path = require('path');
 const logger = require('../../utils/logger');
+
+const KLINE_SCRIPT = path.join(__dirname, '../../../scripts/fetch_kline.py');
 
 class AKShareProvider {
   constructor() {
@@ -44,35 +48,27 @@ class AKShareProvider {
     }
   }
 
-  // 获取历史 K 线数据
-  // period: daily(101) / weekly(102) / monthly(103)
-  // fqt=1 表示前复权
-  async getStockHistory(code, period = 'daily', limit = 100) {
-    try {
-      const secid = this._getSecid(code);
-      const klt = { daily: 101, weekly: 102, monthly: 103 }[period] || 101;
-      const url = `${this.baseUrl}/stock/kline/get`;
-      const params = {
-        secid,
-        fields1: 'f1,f2,f3,f4,f5,f6',
-        fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-        klt,
-        fqt: 1,       // 前复权
-        lmt: limit,
-        end: '20500101',
-        ut: 'fa5fd1943c7b386f172d6893dbfba10b'
-      };
-      const res = await axios.get(url, { params, timeout: 8000 });
-      const klines = res.data?.data?.klines || [];
-      // 每条 K 线是逗号分隔的字符串，按顺序解析各字段
-      return klines.map(k => {
-        const [date, open, close, high, low, volume, amount, amplitude, change_pct, change, turnover] = k.split(',');
-        return { date, open: +open, close: +close, high: +high, low: +low, volume: +volume, amount: +amount, change_pct: +change_pct };
+  // 获取历史 K 线数据（通过 Python AKShare，规避东方财富网络限制）
+  async getStockHistory(code, period = 'daily', limit = 500, startDate = '', endDate = '') {
+    return new Promise((resolve) => {
+      execFile('python3', [KLINE_SCRIPT, code, startDate || '', endDate || '', String(limit)], { timeout: 60000 }, (err, stdout, stderr) => {
+        if (err) {
+          logger.error(`[AKShareProvider] getStockHistory error: ${err.message}`);
+          return resolve([]);
+        }
+        try {
+          const data = JSON.parse(stdout);
+          if (data?.error) {
+            logger.error(`[AKShareProvider] getStockHistory python error: ${data.error}`);
+            return resolve([]);
+          }
+          resolve(Array.isArray(data) ? data : []);
+        } catch (e) {
+          logger.error(`[AKShareProvider] getStockHistory parse error: ${e.message}`);
+          resolve([]);
+        }
       });
-    } catch (e) {
-      logger.error('getStockHistory error: ' + e.message);
-      return [];
-    }
+    });
   }
 
   // 获取大盘三大指数概览：上证、深证、创业板

@@ -5,17 +5,17 @@ const { StockNews, SystemConfig } = require('../models');
 exports.getList = async (req, res) => {
   try {
     const { page = 1, pageSize = 20 } = req.query;
-    const dbNews = await StockNews.findAll({
+    const { count, rows } = await StockNews.findAndCountAll({
       order: [['pub_date', 'DESC']],
       limit: +pageSize,
       offset: (+page - 1) * +pageSize
     });
-    if (dbNews.length > 0) {
-      return res.json({ code: 0, data: dbNews });
+    if (count > 0) {
+      return res.json({ code: 0, data: rows, total: count });
     }
     // 数据库无数据时降级到实时拉取
     const news = await fetchFromEnabledSources(+pageSize);
-    res.json({ code: 0, data: news });
+    res.json({ code: 0, data: news, total: news.length });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }

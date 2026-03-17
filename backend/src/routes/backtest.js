@@ -1,8 +1,11 @@
 // 回测路由
-// POST /run 为重型接口，已在 app.js 中加了额外限流
+// POST /run 为重型接口，单独加限流
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const backtestController = require('../controllers/backtestController');
+
+const runLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 // 统一校验结果处理：有错误时返回第一条错误信息
 const validate = (req, res, next) => {
@@ -32,7 +35,7 @@ router.get('/results', backtestController.getResults);
 router.get('/results/:id', backtestController.getResult);
 router.delete('/results/:id', backtestController.deleteResult);
 
-// 执行回测（校验通过后才进入控制器）
-router.post('/run', runRules, validate, backtestController.runBacktest);
+// 执行回测（限流 + 校验通过后才进入控制器）
+router.post('/run', runLimiter, runRules, validate, backtestController.runBacktest);
 
 module.exports = router;

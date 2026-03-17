@@ -1,4 +1,8 @@
 const axios = require('axios');
+const { execFile } = require('child_process');
+const path = require('path');
+
+const KLINE_SCRIPT = path.join(__dirname, '../../../scripts/fetch_kline.py');
 
 class TushareProvider {
   constructor() {
@@ -43,16 +47,16 @@ class TushareProvider {
     } catch (e) { return null; }
   }
 
-  async getStockHistory(code, period = 'daily', limit = 100) {
-    try {
-      const ts_code = code.startsWith('6') ? `${code}.SH` : `${code}.SZ`;
-      const freq = { daily: 'D', weekly: 'W', monthly: 'M' }[period] || 'D';
-      const data = await this._call('daily', { ts_code, limit }, 'trade_date,open,high,low,close,vol,amount,pct_chg');
-      return (data?.items || []).map(i => ({
-        date: i[0], open: +i[1], high: +i[2], low: +i[3], close: +i[4],
-        volume: +i[5], amount: +i[6], change_pct: +i[7]
-      }));
-    } catch (e) { return []; }
+  async getStockHistory(code, period = 'daily', limit = 500, startDate = '', endDate = '') {
+    return new Promise((resolve) => {
+      execFile('python3', [KLINE_SCRIPT, code, startDate || '', endDate || '', String(limit)], { timeout: 60000 }, (err, stdout) => {
+        if (err) return resolve([]);
+        try {
+          const data = JSON.parse(stdout);
+          resolve(Array.isArray(data) ? data : []);
+        } catch { resolve([]); }
+      });
+    });
   }
 
   async getMarketOverview() {

@@ -1,4 +1,8 @@
 const axios = require('axios');
+const { execFile } = require('child_process');
+const path = require('path');
+
+const KLINE_SCRIPT = path.join(__dirname, '../../../scripts/fetch_kline.py');
 
 class BaoStockProvider {
   constructor() {
@@ -45,19 +49,16 @@ class BaoStockProvider {
     } catch (e) { return null; }
   }
 
-  async getStockHistory(code, period = 'daily', limit = 100) {
-    const secid = code.startsWith('6') ? `1.${code}` : `0.${code}`;
-    const klt = { daily: 101, weekly: 102, monthly: 103 }[period] || 101;
-    try {
-      const res = await axios.get(`${this.baseUrl}/stock/kline/get`, {
-        params: { secid, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61', klt, fqt: 1, lmt: limit, end: '20500101', ut: 'fa5fd1943c7b386f172d6893dbfba10b' },
-        timeout: 8000
+  async getStockHistory(code, period = 'daily', limit = 500, startDate = '', endDate = '') {
+    return new Promise((resolve) => {
+      execFile('python3', [KLINE_SCRIPT, code, startDate || '', endDate || '', String(limit)], { timeout: 60000 }, (err, stdout) => {
+        if (err) return resolve([]);
+        try {
+          const data = JSON.parse(stdout);
+          resolve(Array.isArray(data) ? data : []);
+        } catch { resolve([]); }
       });
-      return (res.data?.data?.klines || []).map(k => {
-        const [date, open, close, high, low, volume, amount, , change_pct] = k.split(',');
-        return { date, open: +open, close: +close, high: +high, low: +low, volume: +volume, amount: +amount, change_pct: +change_pct };
-      });
-    } catch (e) { return []; }
+    });
   }
 
   async getMarketOverview() {

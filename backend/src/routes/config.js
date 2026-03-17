@@ -35,6 +35,16 @@ router.post('/save', async (req, res) => {
   }
 });
 
+// 查询调度器当前任务状态
+router.get('/scheduler/status', (req, res) => {
+  try {
+    const status = scheduler.getStatus();
+    res.json({ code: 0, data: status });
+  } catch (e) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+});
+
 // 重新加载新闻同步调度（前端修改同步频率后调用，立即生效）
 router.post('/reload-sync', async (req, res) => {
   try {

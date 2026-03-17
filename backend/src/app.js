@@ -14,22 +14,20 @@ app.use(express.json());
 // 全局限流：每个 IP 每分钟最多 200 次请求，防止接口滥用
 app.use(rateLimit({ windowMs: 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false }));
 
-// 重型接口限流：回测和 AI 选股耗时较长，每分钟最多 10 次
-const heavyLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-
 // 路由注册
 app.use('/api/stocks',     require('./routes/stocks'));      // 股票行情
 app.use('/api/news',       require('./routes/news'));        // 财经新闻
-app.use('/api/prediction', heavyLimiter, require('./routes/predictions')); // AI 选股（限流）
+app.use('/api/prediction', require('./routes/predictions')); // AI 选股
 app.use('/api/simulation', require('./routes/simulation'));  // 模拟交易
 app.use('/api/analysis',   require('./routes/analysis'));    // 每日指导
 app.use('/api/config',     require('./routes/config'));      // 系统配置
 app.use('/api/prompts',    require('./routes/prompts'));      // 提示词管理
 app.use('/api/llm-config', require('./routes/llmConfig'));   // 大模型配置
 app.use('/api/logs',       require('./routes/logs'));        // 应用日志
-app.use('/api/backtest',   heavyLimiter, require('./routes/backtest'));   // 策略回测（限流）
+app.use('/api/backtest',   require('./routes/backtest'));   // 策略回测
 app.use('/api/strategy',   require('./routes/strategy'));    // 策略管理
 app.use('/api/sim',        require('./routes/sim'));         // 模拟交易（新）
+app.use('/api/workflow',   require('./routes/workflow'));    // 自动流程
 
 // 健康检查接口，供运维监控使用
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

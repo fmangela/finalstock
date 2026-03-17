@@ -4,6 +4,7 @@
 const axios = require('axios');
 const sequelize = require('../config/database');
 const { StockPrediction, StockPrompt, StockNews, SystemConfig } = require('../models');
+const { formatDateTime } = require('../utils/dateUtils');
 
 // 根据 provider 构建 LLM 请求体，各家 web search 参数格式不同
 function buildLlmRequest({ provider, model_name, systemMsg, userMsg, webSearchEnabled }) {
@@ -171,7 +172,7 @@ exports.execute = async (req, res) => {
       if (newsList.length > 0) {
         userMsg += '\n\n【近期财经要闻】\n';
         newsList.slice(0, 5).forEach(n => {
-          const dateStr = n.pub_date ? (typeof n.pub_date === 'string' ? n.pub_date.slice(0, 16) : new Date(n.pub_date).toISOString().slice(0, 16)) : '';
+          const dateStr = n.pub_date ? formatDateTime(n.pub_date) : '';
           userMsg += `- ${dateStr} ${n.title}\n`;
         });
       }

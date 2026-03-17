@@ -5,6 +5,8 @@ const klineService = require('./klineService');
 const Strategy = require('../strategies');
 const { calculateAllIndicators } = require('../strategies/indicators');
 const logger = require('../utils/logger');
+const { getNextTradingDay, isTodayTradingDay } = require('./tradingCalendar');
+const { getTodayStr } = require('../utils/dateUtils');
 
 const SLIPPAGE_BUY  = 0.001;  // 买入滑点 0.1%
 const SLIPPAGE_SELL = 0.001;  // 卖出滑点 0.1%
@@ -21,6 +23,11 @@ async function advanceTask(taskOrId) {
 
   if (!task || task.status !== 'running') {
     return { advanced: false, reason: 'task not running' };
+  }
+
+  // 非交易日直接跳过（节假日/周末）
+  if (!isTodayTradingDay()) {
+    return { advanced: false, reason: 'not a trading day' };
   }
 
   // 确定本次要执行的交易日
@@ -223,22 +230,6 @@ function checkLimitUpDown(stockCode, todayKline, prevKline) {
     isLimitUp:   pct >= limit - 0.001,
     isLimitDown: pct <= -(limit - 0.001)
   };
-}
-
-// 获取今日日期字符串
-function getTodayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-// 简单的下一交易日估算（跳过周末，节假日由数据缺失自然处理）
-function getNextTradingDay(dateStr) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + 1);
-  // 跳过周末
-  while (d.getDay() === 0 || d.getDay() === 6) {
-    d.setDate(d.getDate() + 1);
-  }
-  return d.toISOString().slice(0, 10);
 }
 
 function buildIndicatorParams(params) {

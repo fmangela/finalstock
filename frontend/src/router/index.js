@@ -17,6 +17,7 @@ const routes = [
       { path: 'backtest',   component: () => import('@/views/backtest/Index.vue'),   meta: { title: '股票回测' } },
       { path: 'simulation', component: () => import('@/views/simulation/Index.vue'), meta: { title: '模拟交易' } },
       { path: 'simulation/:id', component: () => import('@/views/simulation/Detail.vue'), meta: { title: '模拟交易详情' } },
+      { path: 'workflow',   component: () => import('@/views/workflow/Index.vue'),   meta: { title: '自动流程' } },
       { path: 'settings',   component: () => import('@/views/settings/Index.vue'),   meta: { title: '系统设置' } }
     ]
   },

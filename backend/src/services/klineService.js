@@ -2,9 +2,9 @@
 // 查询时先查 stock_kline_cache 表，缺失再调 API 补全并写入缓存
 const { KlineCache } = require('../models');
 const { Op } = require('sequelize');
-const SinaStockProvider = require('./providers/SinaStockProvider');
 const DataService = require('./DataService');
 const logger = require('../utils/logger');
+const { offsetDate } = require('../utils/dateUtils');
 
 /**
  * 获取指定股票在日期范围内的 K 线数据
@@ -136,19 +136,13 @@ async function getRecentKlines(stockCode, beforeDate, count) {
   }));
 }
 
-// 从 API 拉取 K 线（新浪优先，降级东方财富）
+// 从 API 拉取 K 线（通过 DataService 遵循系统配置的数据提供商）
 async function fetchFromAPI(stockCode, startDate, endDate) {
-  try {
-    const data = await SinaStockProvider.getKline(stockCode, startDate, endDate);
-    if (data && data.length > 0) return data;
-  } catch (e) {
-    logger.warn(`[KlineService] 新浪API失败: ${e.message}`);
-  }
   try {
     const data = await DataService.getStockHistory(stockCode, 'daily', 500);
     if (data && data.length > 0) return data;
   } catch (e) {
-    logger.warn(`[KlineService] 东方财富API失败: ${e.message}`);
+    logger.warn(`[KlineService] 数据获取失败: ${e.message}`);
   }
   return [];
 }
@@ -169,13 +163,6 @@ async function bulkUpsert(stockCode, klines) {
   } catch (e) {
     logger.error(`[KlineService] 缓存写入失败: ${e.message}`);
   }
-}
-
-// 日期偏移工具（days 可为负）
-function offsetDate(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 module.exports = { getKlines, getDayKline, getRecentKlines };

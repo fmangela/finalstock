@@ -1,11 +1,12 @@
 // 每日市场指导控制器
 // 每个交易日对应一条记录（trade_date 唯一），保存/更新时用 findOrCreate 避免重复
 const { DailyGuidance } = require('../models');
+const { getTodayStr } = require('../utils/dateUtils');
 
 // 获取今日市场指导（按当前日期查询，无记录时返回 null）
 exports.getToday = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0]; // 格式：YYYY-MM-DD
+    const today = getTodayStr(); // 格式：YYYY-MM-DD
     const guidance = await DailyGuidance.findOne({ where: { trade_date: today } });
     res.json({ code: 0, data: guidance });
   } catch (e) {

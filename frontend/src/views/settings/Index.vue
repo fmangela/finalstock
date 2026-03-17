@@ -137,6 +137,40 @@
           </el-table>
         </el-tab-pane>
 
+        <!-- 调度器状态 -->
+        <el-tab-pane label="调度器状态" name="scheduler">
+          <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+            <el-button @click="loadSchedulerStatus" :loading="schedulerLoading">刷新</el-button>
+            <span v-if="schedulerStatus" style="color:#606266;font-size:13px">
+              共 <b>{{ schedulerStatus.total }}</b> 个任务，
+              <b style="color:#67c23a">{{ schedulerStatus.active }}</b> 个运行中
+            </span>
+          </div>
+          <el-table :data="schedulerStatus?.tasks || []" v-loading="schedulerLoading" stripe style="width:100%" size="small">
+            <el-table-column prop="name" label="任务名称" width="200" />
+            <el-table-column prop="cron" label="Cron 表达式" width="160">
+              <template #default="{ row }">
+                <el-tag type="info" size="small">{{ row.cron }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="type" label="类型" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.type === 'fixed' ? 'primary' : 'warning'" size="small">
+                  {{ row.type === 'fixed' ? '固定' : '动态' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="active" label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.active ? 'success' : 'info'" size="small">
+                  {{ row.active ? '运行中' : '未启动' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="desc" label="说明" min-width="200" />
+          </el-table>
+        </el-tab-pane>
+
         <!-- 新闻源 -->
         <el-tab-pane label="新闻源" name="news">
           <el-form :model="configs.news" label-width="130px" style="max-width:600px">
@@ -530,7 +564,24 @@ const saveLogEnabled = async (val) => {
   ElMessage.success(val ? '日志记录已启用' : '日志记录已关闭')
 }
 
-watch(activeTab, (tab) => { if (tab === 'logs') loadLogs() })
+// Scheduler status
+const schedulerStatus = ref(null)
+const schedulerLoading = ref(false)
+
+const loadSchedulerStatus = async () => {
+  schedulerLoading.value = true
+  try {
+    const res = await configApi.schedulerStatus()
+    schedulerStatus.value = res?.data || null
+  } finally {
+    schedulerLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'logs') loadLogs()
+  if (tab === 'scheduler') loadSchedulerStatus()
+})
 
 onMounted(() => { loadLlmProviders(); loadConfigs(); loadPrompts() })
 </script>

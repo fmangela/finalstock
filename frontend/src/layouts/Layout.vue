@@ -31,6 +31,7 @@ const menuItems = [
   { path: '/finalstock/prediction', title: 'LLM选股', icon: 'MagicStick' },
   { path: '/finalstock/backtest', title: '股票回测', icon: 'DataAnalysis' },
   { path: '/finalstock/simulation', title: '模拟交易', icon: 'Coin' },
+  { path: '/finalstock/workflow', title: '自动流程', icon: 'Cpu' },
   { path: '/finalstock/settings', title: '系统设置', icon: 'Setting' }
 ]
 

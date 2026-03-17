@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const simEngine = require('../services/simEngine');
 const klineService = require('../services/klineService');
 const logger = require('../utils/logger');
+const { getTodayStr, offsetDate } = require('../utils/dateUtils');
 
 // GET /api/sim/tasks — 任务列表（含汇总指标）
 exports.getTasks = async (req, res) => {
@@ -98,7 +99,7 @@ exports.getTask = async (req, res) => {
     // 获取K线数据用于图表（最近120条）
     let klineData = [];
     try {
-      const endDate = task.last_run_date || new Date().toISOString().slice(0, 10);
+      const endDate = task.last_run_date || getTodayStr();
       const startDate = offsetDate(endDate, -180);
       klineData = await klineService.getKlines(task.stock_code, startDate, endDate);
     } catch (e) {
@@ -191,8 +192,3 @@ function buildEquityCurve(task, trades) {
   return curve;
 }
 
-function offsetDate(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}

@@ -72,9 +72,10 @@ export const analysisApi = {
 
 // ── 系统配置 API ──────────────────────────────────────────────
 export const configApi = {
-  getAll:     () => http.get('/config/all'),
-  save:       (data) => http.post('/config/save', data),
-  reloadSync: () => http.post('/config/reload-sync')  // 修改同步频率后调用，立即生效
+  getAll:          () => http.get('/config/all'),
+  save:            (data) => http.post('/config/save', data),
+  reloadSync:      () => http.post('/config/reload-sync'),
+  schedulerStatus: () => http.get('/config/scheduler/status')
 }
 
 // ── 应用日志 API ──────────────────────────────────────────────
@@ -107,6 +108,19 @@ export const simApi = {
   getTask:    (id)     => http.get(`/sim/tasks/${id}`),
   runTask:    (id)     => http.post(`/sim/tasks/${id}/run`),
   getStocks:  ()       => http.get('/sim/stocks')
+}
+
+// ── 自动流程 API ──────────────────────────────────────────────
+export const workflowApi = {
+  getConfig:      () => http.get('/workflow/config'),
+  saveConfig:     (data) => http.post('/workflow/config', data),
+  getPrompts:     () => http.get('/workflow/prompts'),
+  getStrategies:  () => http.get('/workflow/strategies'),
+  runPickStock:   () => http.post('/workflow/run/pick-stock', {}, { timeout: 120000 }),
+  runBacktest:    () => http.post('/workflow/run/backtest', {}, { timeout: 300000 }),
+  runSimulation:  () => http.post('/workflow/run/simulation', {}),
+  reloadSchedule: () => http.post('/workflow/reload-schedule', {}),
+  getCalendar:    (year, month) => http.get('/workflow/calendar', { params: { year, month } })
 }
 
 // ── 策略管理 API ──────────────────────────────────────────────

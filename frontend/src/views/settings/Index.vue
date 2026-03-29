@@ -143,7 +143,11 @@
             <el-button @click="loadSchedulerStatus" :loading="schedulerLoading">刷新</el-button>
             <span v-if="schedulerStatus" style="color:#606266;font-size:13px">
               共 <b>{{ schedulerStatus.total }}</b> 个任务，
-              <b style="color:#67c23a">{{ schedulerStatus.active }}</b> 个运行中
+              已调度 <b style="color:#67c23a">{{ schedulerStatus.scheduled || 0 }}</b> 个，
+              执行中 <b style="color:#e6a23c">{{ schedulerStatus.running || 0 }}</b> 个
+            </span>
+            <span v-if="schedulerStatus?.refreshedAt" style="color:#909399;font-size:12px">
+              最近刷新：{{ new Date(schedulerStatus.refreshedAt).toLocaleTimeString() }}
             </span>
           </div>
           <el-table :data="schedulerStatus?.tasks || []" v-loading="schedulerLoading" stripe style="width:100%" size="small">
@@ -160,10 +164,10 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="active" label="状态" width="80">
+            <el-table-column prop="statusText" label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.active ? 'success' : 'info'" size="small">
-                  {{ row.active ? '运行中' : '未启动' }}
+                <el-tag :type="schedulerStatusTagType(row.status)" size="small">
+                  {{ row.statusText }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -272,12 +276,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
 import { configApi, llmConfigApi, promptApi, logApi } from '@/api'
 
 const activeTab = ref('data_source')
+let schedulerTimer = null
 const saving = ref(false)
 const testing = ref(false)
 const newsSources = ref([])
@@ -565,6 +570,14 @@ const logsLoading = ref(false)
 const logClearing = ref(false)
 const logEnabled = ref(false)
 
+const schedulerStatusTagType = (status) => ({
+  running: 'warning',
+  scheduled: 'success',
+  disabled: 'info',
+  stopped: 'danger',
+  idle: 'info'
+}[status] || 'info')
+
 const loadLogs = async () => {
   logsLoading.value = true
   try {
@@ -596,22 +609,39 @@ const saveLogEnabled = async (val) => {
 const schedulerStatus = ref(null)
 const schedulerLoading = ref(false)
 
-const loadSchedulerStatus = async () => {
-  schedulerLoading.value = true
+const loadSchedulerStatus = async (silent = false) => {
+  if (!silent) schedulerLoading.value = true
   try {
     const res = await configApi.schedulerStatus()
     schedulerStatus.value = res?.data || null
   } finally {
-    schedulerLoading.value = false
+    if (!silent) schedulerLoading.value = false
   }
+}
+
+const stopSchedulerPolling = () => {
+  if (schedulerTimer) {
+    clearInterval(schedulerTimer)
+    schedulerTimer = null
+  }
+}
+
+const startSchedulerPolling = async () => {
+  stopSchedulerPolling()
+  await loadSchedulerStatus()
+  schedulerTimer = setInterval(() => {
+    loadSchedulerStatus(true)
+  }, 5000)
 }
 
 watch(activeTab, (tab) => {
   if (tab === 'logs') loadLogs()
-  if (tab === 'scheduler') loadSchedulerStatus()
+  if (tab === 'scheduler') startSchedulerPolling()
+  else stopSchedulerPolling()
 })
 
 onMounted(() => { loadLlmProviders(); loadConfigs(); loadPrompts() })
+onBeforeUnmount(() => { stopSchedulerPolling() })
 </script>
 
 <style scoped>

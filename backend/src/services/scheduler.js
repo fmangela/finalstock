@@ -17,6 +17,8 @@ function createTaskInfo(name, cronExpr, desc, type) {
     type,
     handle: null,
     active: false,
+    status: 'idle',
+    statusText: '未启动',
     lastRunAt: null,
     lastResult: '-',
     lastError: null
@@ -33,6 +35,11 @@ const fixedTasks = {
 const newsSyncTask = createTaskInfo('新闻定时同步', '-', '按配置周期同步财经新闻', 'dynamic');
 let autoWorkflowTasks = [];
 
+function setTaskStatus(taskInfo, status, statusText) {
+  taskInfo.status = status;
+  taskInfo.statusText = statusText;
+}
+
 function setTaskResult(taskInfo, result = {}) {
   taskInfo.lastRunAt = new Date().toISOString();
   taskInfo.lastResult = result.message || '执行成功';
@@ -45,7 +52,7 @@ function setTaskError(taskInfo, error) {
   taskInfo.lastError = error.message;
 }
 
-function stopTask(taskInfo) {
+function stopTask(taskInfo, status = 'stopped', statusText = '已停止') {
   if (!taskInfo?.handle) return;
   try {
     taskInfo.handle.stop();
@@ -54,21 +61,30 @@ function stopTask(taskInfo) {
   }
   taskInfo.handle = null;
   taskInfo.active = false;
+  setTaskStatus(taskInfo, status, statusText);
 }
 
 function scheduleTrackedTask(taskInfo, cronExpr, handler, options = {}) {
-  stopTask(taskInfo);
+  if (taskInfo.handle) {
+    stopTask(taskInfo);
+  }
   taskInfo.cron = cronExpr;
   taskInfo.handle = cron.schedule(cronExpr, async () => {
+    setTaskStatus(taskInfo, 'running', '执行中');
     try {
       const result = await handler();
       setTaskResult(taskInfo, result);
     } catch (e) {
       setTaskError(taskInfo, e);
       logger.error(`[Scheduler] 任务 ${taskInfo.name} 执行失败: ${e.message}`);
+    } finally {
+      if (taskInfo.handle) {
+        setTaskStatus(taskInfo, 'scheduled', '已调度');
+      }
     }
   }, options);
   taskInfo.active = true;
+  setTaskStatus(taskInfo, 'scheduled', '已调度');
   return taskInfo.handle;
 }
 
@@ -79,6 +95,8 @@ function getTaskSnapshot(taskInfo) {
     desc: taskInfo.desc,
     type: taskInfo.type,
     active: taskInfo.active && !!taskInfo.handle,
+    status: taskInfo.status,
+    statusText: taskInfo.statusText,
     lastRunAt: taskInfo.lastRunAt,
     lastResult: taskInfo.lastError ? `${taskInfo.lastResult}: ${taskInfo.lastError}` : taskInfo.lastResult
   };
@@ -198,6 +216,7 @@ async function reloadNewsSyncSchedule() {
     if (!enabled) {
       newsSyncTask.cron = '-';
       newsSyncTask.lastResult = '已禁用';
+      setTaskStatus(newsSyncTask, 'disabled', '已禁用');
       logger.info('[Scheduler] 新闻同步已禁用，不启动调度任务');
       return;
     }
@@ -205,6 +224,7 @@ async function reloadNewsSyncSchedule() {
     if (endTime > 0 && Date.now() > endTime) {
       newsSyncTask.cron = '-';
       newsSyncTask.lastResult = '已过终止时间';
+      setTaskStatus(newsSyncTask, 'disabled', '已禁用');
       logger.info('[Scheduler] 新闻同步终止时间已过，不启动调度任务');
       return;
     }
@@ -220,7 +240,7 @@ async function reloadNewsSyncSchedule() {
       const currentEnd = parseInt(endCfg?.config_value) || 0;
       if (currentEnd > 0 && Date.now() > currentEnd) {
         logger.info('[Scheduler] 新闻同步已到终止时间，自动停止');
-        stopTask(newsSyncTask);
+        stopTask(newsSyncTask, 'disabled', '已禁用');
         newsSyncTask.lastResult = '已到终止时间并停止';
         await SystemConfig.upsert({ config_group: 'news', config_key: 'sync_enabled', config_value: '0' });
         return { message: '已到终止时间并停止' };
@@ -451,10 +471,20 @@ function getStatus() {
     getTaskSnapshot(newsSyncTask),
     ...autoWorkflowTasks.map(getTaskSnapshot)
   ];
+  const summary = tasks.reduce((acc, task) => {
+    acc[task.status] = (acc[task.status] || 0) + 1;
+    return acc;
+  }, {});
 
   return {
     total: tasks.length,
     active: tasks.filter(task => task.active).length,
+    running: summary.running || 0,
+    scheduled: summary.scheduled || 0,
+    disabled: summary.disabled || 0,
+    stopped: summary.stopped || 0,
+    idle: summary.idle || 0,
+    refreshedAt: new Date().toISOString(),
     tasks
   };
 }

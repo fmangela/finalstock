@@ -3,12 +3,12 @@
 ## 1. 项目概述
 
 - **项目名称**: Final Stock - A股智能分析系统
-- **项目目录**: `/home/fmangela/.openclaw/workspace/finalstock`
+- **项目目录**: `/home/fmangela/finalstock`
 - **技术栈**:
-  - 前端: Vue 3 + Vite + TypeScript + Element Plus (参考 vue-vben-admin)
+  - 前端: Vue 3 + Vite + Element Plus
   - 后端: Node.js + Express + Sequelize
   - 数据库: MariaDB 10.5 (数据库名: openclaw)
-  - 数据源: AKShare (免费 Python 库)
+  - 数据源: AKShare / BaoStock / Tushare（统一通过服务层与 Python 脚本适配）
 
 ---
 
@@ -129,12 +129,12 @@ CREATE TABLE stock_predictions (
   id INT PRIMARY KEY AUTO_INCREMENT,
   stock_code VARCHAR(10),
   stock_name VARCHAR(50),
-  prediction_date DATE,
+  stockup_date DATETIME,
   target_price DECIMAL(10,2),
   stop_loss DECIMAL(10,2),
   confidence FLOAT,
   reason TEXT,
-  status ENUM('active','success','failed','abandoned'),
+  status ENUM('active','success','failed','abandoned','expired'),
   actual_result TEXT,
   llm_model VARCHAR(50),
   llm_params JSON
@@ -218,6 +218,14 @@ CREATE TABLE daily_guidance (
 - 基于 vue-vben-admin 模板
 - 页面组件开发
 - API 对接
+
+---
+
+## 6. 当前实现补充
+
+- 当前仓库包含 `backend/tests/` 基础测试目录，已覆盖指标、策略和部分校验逻辑。
+- 自动流程、策略回测、新版模拟交易任务页均已落地，不再只是设计预留。
+- 启动阶段已增加 schema 兼容性检查，用于在数据库字段缺失或枚举不一致时快速失败。
 
 ### 步骤4: 部署配置
 - 开机自启配置（systemd）

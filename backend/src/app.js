@@ -43,7 +43,9 @@ app.use(async (err, req, res, next) => {
       await AppLog.error('api', err.message?.slice(0, 500) || 'Unknown error',
         JSON.stringify({ url: req.url, method: req.method, stack: err.stack?.slice(0, 2000) }));
     }
-  } catch (_) {}
+  } catch (logErr) {
+    logger.warn(`写入数据库错误日志失败: ${logErr.message}`);
+  }
   res.status(500).json({ code: 1, message: err.message || 'Internal server error' });
 });
 

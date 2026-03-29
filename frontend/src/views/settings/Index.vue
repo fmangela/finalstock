@@ -31,7 +31,7 @@
               <el-input v-model="llmForm.api_url" placeholder="https://api.openai.com/v1/chat/completions" />
             </el-form-item>
             <el-form-item label="API Key">
-              <el-input v-model="llmForm.api_key" type="password" show-password />
+              <el-input v-model="llmForm.api_key" type="password" show-password @input="onApiKeyInput" />
             </el-form-item>
             <el-form-item label="模型名称">
               <el-select
@@ -167,7 +167,13 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="desc" label="说明" min-width="200" />
+            <el-table-column prop="lastRunAt" label="最近执行" width="170">
+              <template #default="{ row }">
+                {{ row.lastRunAt ? new Date(row.lastRunAt).toLocaleString() : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="lastResult" label="最近结果" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="desc" label="说明" min-width="220" />
           </el-table>
         </el-tab-pane>
 
@@ -285,13 +291,22 @@ const configs = ref({
 const llmForm = ref({ api_url: '', api_key: '', model_name: '', web_search_enabled: false })
 const llmPreset = ref('')
 const llmProviders = ref({})
+const llmKeyMasked = ref(false)
+const llmKeyDirty = ref(false)
 
 // 从后端加载 providers 列表（含 web_search_support 等元数据）
 const loadLlmProviders = async () => {
   try {
     const res = await llmConfigApi.get()
     if (res?.data?.providers) llmProviders.value = res.data.providers
-  } catch (_) {}
+  } catch (e) {
+    console.warn('加载 LLM providers 失败:', e)
+  }
+}
+
+const onApiKeyInput = () => {
+  llmKeyDirty.value = true
+  llmKeyMasked.value = false
 }
 
 // 当前选中 provider 的模型列表
@@ -323,7 +338,12 @@ const applyPreset = (key) => {
 const saveLlmConfig = async () => {
   saving.value = true
   try {
-    await llmConfigApi.save({ ...llmForm.value, provider: llmPreset.value })
+    await llmConfigApi.save({
+      ...llmForm.value,
+      provider: llmPreset.value,
+      api_key_changed: llmKeyDirty.value
+    })
+    await loadConfigs()
     ElMessage.success('保存成功')
   } finally {
     saving.value = false
@@ -336,7 +356,8 @@ const testLlmConfig = async () => {
     const res = await llmConfigApi.test({
       provider: llmPreset.value || 'custom',
       api_url: llmForm.value.api_url,
-      api_key: llmForm.value.api_key,
+      ...(llmKeyDirty.value ? { api_key: llmForm.value.api_key } : {}),
+      api_key_changed: llmKeyDirty.value,
       model_name: llmForm.value.model_name
     })
     if (res?.code === 0) ElMessage.success(res.message)
@@ -466,10 +487,15 @@ const loadConfigs = async () => {
         pe_max: +d.stock_filter.pe_max || 50
       }
     }
-    if (d.news) {
-      if (d.news.sources) {
-        try { newsSources.value = JSON.parse(d.news.sources) } catch { newsSources.value = [] }
-      }
+      if (d.news) {
+        if (d.news.sources) {
+          try {
+            newsSources.value = JSON.parse(d.news.sources)
+          } catch (e) {
+            console.warn('解析新闻源配置失败:', e)
+            newsSources.value = []
+          }
+        }
       if (d.news.retention_days) configs.value.news.retention_days = +d.news.retention_days || 7
       syncConfig.value.enabled = d.news.sync_enabled === '1'
       if (d.news.sync_period_type) syncConfig.value.period_type = d.news.sync_period_type
@@ -480,7 +506,7 @@ const loadConfigs = async () => {
       syncConfig.value.no_end = endTs === 0
       syncConfig.value.end_time = endTs > 0 ? endTs : null
     }
-    if (d.log) logEnabled.value = d.log.enabled === '1'
+    if (d.logging) logEnabled.value = d.logging.enabled === '1'
   }
   if (llmRes?.data) {
     llmForm.value = {
@@ -489,6 +515,8 @@ const loadConfigs = async () => {
       model_name: llmRes.data.model_name || '',
       web_search_enabled: llmRes.data.web_search_enabled === '1'
     }
+    llmKeyMasked.value = Boolean(llmRes.data.api_key_masked && llmRes.data.api_key)
+    llmKeyDirty.value = false
     if (llmRes.data.provider) llmPreset.value = llmRes.data.provider
   }
 }

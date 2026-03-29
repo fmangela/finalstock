@@ -48,7 +48,7 @@
         <el-button size="small" type="danger" @click="batchDelete" :disabled="selectedRows.length===0">批量删除</el-button>
       </div>
 
-      <el-table :data="tasks" v-loading="loading" stripe @selection-change="handleSelectionChange">
+      <el-table ref="tableRef" :data="tasks" :row-key="row => row.id" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="stock_code" label="代码" width="90" />
         <el-table-column prop="stock_name" label="名称" width="100" />
@@ -201,7 +201,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { simApi, strategyApi } from '@/api'
@@ -213,6 +213,7 @@ const instanceList = ref([])
 const loading = ref(false)
 const createVisible = ref(false)
 const submitting = ref(false)
+const tableRef = ref(null)
 const selectedRows = ref([])
 const selectAll = ref(false)
 
@@ -220,9 +221,22 @@ const isIndeterminate = computed(() =>
   selectedRows.value.length > 0 && selectedRows.value.length < tasks.value.length
 )
 
-const handleSelectionChange = (rows) => { selectedRows.value = rows }
+const handleSelectionChange = (rows) => {
+  selectedRows.value = rows
+  selectAll.value = tasks.value.length > 0 && rows.length === tasks.value.length
+}
 
-const handleSelectAll = (val) => { selectedRows.value = val ? [...tasks.value] : [] }
+const handleSelectAll = async (val) => {
+  await nextTick()
+  if (!tableRef.value) {
+    selectedRows.value = val ? [...tasks.value] : []
+    return
+  }
+  tableRef.value.clearSelection()
+  if (val) {
+    tasks.value.forEach(row => tableRef.value.toggleRowSelection(row, true))
+  }
+}
 
 const defaultParams = () => ({
   short_period: 5, long_period: 20,
@@ -266,6 +280,10 @@ const loadTasks = async () => {
   try {
     const res = await simApi.getTasks()
     tasks.value = res?.data || []
+    selectedRows.value = []
+    selectAll.value = false
+    await nextTick()
+    tableRef.value?.clearSelection()
   } finally {
     loading.value = false
   }
@@ -286,7 +304,10 @@ const onStrategyTypeChange = async (type) => {
     } else {
       instanceList.value = []
     }
-  } catch { instanceList.value = [] }
+  } catch (e) {
+    console.warn('加载策略实例失败:', e)
+    instanceList.value = []
+  }
 }
 
 const onInstanceChange = (instanceId) => {

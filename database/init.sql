@@ -282,12 +282,14 @@ CREATE TABLE IF NOT EXISTS `strategy_instances` (
 -- ============================================
 CREATE TABLE IF NOT EXISTS `app_logs` (
   `id` INT NOT NULL AUTO_INCREMENT,
-  `log_type` VARCHAR(20) NOT NULL COMMENT '日志类型',
-  `message` TEXT COMMENT '消息',
-  `details` TEXT COMMENT '详情',
+  `level` VARCHAR(10) DEFAULT 'info' COMMENT '日志级别',
+  `source` VARCHAR(50) COMMENT '来源模块',
+  `message` VARCHAR(500) COMMENT '消息',
+  `content` TEXT COMMENT '详情',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  INDEX idx_log_type (`log_type`),
+  INDEX idx_level (`level`),
+  INDEX idx_source (`source`),
   INDEX idx_created_at (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='应用日志表';
 

@@ -1,7 +1,7 @@
 // A 股交易日历服务
-// 判断某天是否为 A 股交易日：非周末 + 非法定节假日 + 非调休休息日
+// 判断某天是否为 A 股交易日：非周末 + 非法定节假日
 // 数据来源：上交所/深交所官方公告，覆盖 2024-2026 年
-// 调休上班日（如某些周六）也视为交易日
+// 注意：周末调休上班日并不等于交易日
 
 // ── 节假日（休市）列表 ────────────────────────────────────────
 // 仅列出【工作日】中需要休市的日期（周末本身不需列出）
@@ -34,9 +34,9 @@ const HOLIDAYS = new Set([
   '2026-10-01','2026-10-02','2026-10-05','2026-10-06','2026-10-07','2026-10-08',  // 国庆
 ]);
 
-// ── 调休上班日（周末但需交易）────────────────────────────────
-// 这些日期虽然是周六/周日，但因调休需要正常交易
-const EXTRA_TRADING_DAYS = new Set([
+// ── 调休上班日（周末但并非交易日）────────────────────────────
+// 仅用于日历展示备注，不参与交易日判断
+const WEEKEND_WORKDAYS = new Set([
   // 2024 年调休上班
   '2024-02-04',  // 春节调休（周日上班）
   '2024-02-18',  // 春节调休（周日上班）
@@ -62,7 +62,7 @@ const EXTRA_TRADING_DAYS = new Set([
 
 /**
  * 判断指定日期是否为 A 股交易日
- * 优先级：调休上班日 > 节假日 > 周末 > 普通工作日
+ * 规则：周末休市；工作日若为法定节假日休市；其余为交易日
  */
 function isTradingDay(date) {
   let dateStr;
@@ -78,9 +78,6 @@ function isTradingDay(date) {
 
   const d = new Date(dateStr + 'T12:00:00'); // 用中午12点避免时区边界问题
   const dow = d.getDay();
-
-  // 调休上班日：即使是周末也交易（优先级最高）
-  if (EXTRA_TRADING_DAYS.has(dateStr)) return true;
 
   // 周末不交易
   if (dow === 0 || dow === 6) return false;
@@ -132,12 +129,10 @@ function getMonthCalendar(year, month) {
     const trading = isTradingDay(dateStr);
 
     let note = '';
-    if (EXTRA_TRADING_DAYS.has(dateStr)) {
-      note = '调休交易';
-    } else if (HOLIDAYS.has(dateStr)) {
+    if (HOLIDAYS.has(dateStr)) {
       note = '节假日';
     } else if (dow === 0 || dow === 6) {
-      note = '周末';
+      note = WEEKEND_WORKDAYS.has(dateStr) ? '周末(调休上班)' : '周末';
     }
 
     result.push({ date: dateStr, trading, note, dow });

@@ -30,7 +30,7 @@
         </el-button>
         <el-button size="small" type="danger" @click="batchDelete" :disabled="selectedRows.length===0">批量删除</el-button>
       </div>
-      <el-table :data="list" v-loading="loading" stripe @selection-change="handleSelectionChange" @sort-change="handleSortChange">
+      <el-table ref="tableRef" :data="list" :row-key="row => row.id" v-loading="loading" stripe @selection-change="handleSelectionChange" @sort-change="handleSortChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="stock_code" label="代码" width="90" sortable="custom" />
         <el-table-column prop="stock_name" label="名称" width="100" sortable="custom" />
@@ -141,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { predictionApi, promptApi } from '@/api'
 
@@ -150,6 +150,7 @@ const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+const tableRef = ref(null)
 const activeTab = ref('')
 const sortField = ref('')
 const sortOrder = ref('')
@@ -172,6 +173,10 @@ const loadList = async () => {
     })
     list.value = res?.data?.list || []
     total.value = res?.data?.total || 0
+    selectedRows.value = []
+    selectAll.value = false
+    await nextTick()
+    tableRef.value?.clearSelection()
   } finally {
     loading.value = false
   }
@@ -184,12 +189,14 @@ const handleSortChange = ({ prop, order }) => {
   loadList()
 }
 
-const handleTabChange = () => {
+const handleTabChange = async () => {
   sortField.value = ''
   sortOrder.value = ''
   page.value = 1
   selectedRows.value = []
   selectAll.value = false
+  await nextTick()
+  tableRef.value?.clearSelection()
   loadList()
 }
 
@@ -206,14 +213,23 @@ const selectAll = ref(false)
 
 const handleSelectionChange = (rows) => {
   selectedRows.value = rows
+  selectAll.value = list.value.length > 0 && rows.length === list.value.length
 }
 
 const isIndeterminate = computed(() => {
   return selectedRows.value.length > 0 && selectedRows.value.length < list.value.length
 })
 
-const handleSelectAll = (val) => {
-  selectedRows.value = val ? [...list.value] : []
+const handleSelectAll = async (val) => {
+  await nextTick()
+  if (!tableRef.value) {
+    selectedRows.value = val ? [...list.value] : []
+    return
+  }
+  tableRef.value.clearSelection()
+  if (val) {
+    list.value.forEach(row => tableRef.value.toggleRowSelection(row, true))
+  }
 }
 
 // 删除单条

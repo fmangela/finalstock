@@ -5,6 +5,19 @@ const router = require('express').Router();
 const { SystemConfig } = require('../models');
 const axios = require('axios');
 
+function maskSecret(value) {
+  if (!value) return '';
+  if (value.length <= 8) return '*'.repeat(value.length);
+  return `${value.slice(0, 3)}${'*'.repeat(Math.max(4, value.length - 7))}${value.slice(-4)}`;
+}
+
+async function loadSavedConfig() {
+  const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
+  const cfg = {};
+  configs.forEach(c => { cfg[c.config_key] = c.config_value; });
+  return cfg;
+}
+
 // 内置提供商列表：前端下拉选择后自动填充 baseUrl 和可用模型
 // web_search_support: 是否支持联网搜索
 // web_search_models: 支持联网搜索的模型列表（为空表示全部支持）
@@ -84,11 +97,12 @@ const LLM_PROVIDERS = {
 // 获取当前 LLM 配置，同时返回提供商列表（供前端下拉渲染）
 router.get('/get', async (req, res) => {
   try {
-    const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
+    const configs = await loadSavedConfig();
     const result = { providers: LLM_PROVIDERS };
-    for (const c of configs) {
-      result[c.config_key] = c.config_value;
+    for (const [key, value] of Object.entries(configs)) {
+      result[key] = key === 'api_key' ? maskSecret(value) : value;
     }
+    result.api_key_masked = Boolean(configs.api_key);
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
@@ -98,13 +112,17 @@ router.get('/get', async (req, res) => {
 // 保存 LLM 配置（provider / api_url / api_key / model_name / web_search_enabled）
 router.post('/save', async (req, res) => {
   try {
-    const { provider, api_url, api_key, model_name, web_search_enabled } = req.body;
+    const { provider, api_url, api_key, model_name, web_search_enabled, api_key_changed } = req.body;
+    const saved = await loadSavedConfig();
+    const nextApiKey = api_key_changed === true || api_key_changed === '1'
+      ? (api_key || '')
+      : (saved.api_key || '');
     const items = [
       { key: 'provider', value: provider },
       { key: 'api_url', value: api_url },
-      { key: 'api_key', value: api_key },
+      { key: 'api_key', value: nextApiKey },
       { key: 'model_name', value: model_name },
-      { key: 'web_search_enabled', value: web_search_enabled ? '1' : '0' }
+      { key: 'web_search_enabled', value: (web_search_enabled === true || web_search_enabled === '1') ? '1' : '0' }
     ];
     for (const item of items) {
       await SystemConfig.findOrCreate({
@@ -124,15 +142,19 @@ router.post('/save', async (req, res) => {
 // 可传入临时参数测试，也可不传参数（自动读取已保存配置）
 router.post('/test', async (req, res) => {
   try {
-    const { provider, api_url, api_key, model_name } = req.body;
+    const saved = await loadSavedConfig();
+    const apiKeyChanged = req.body.api_key_changed === true || req.body.api_key_changed === '1';
+    const provider = req.body.provider || saved.provider;
+    const api_url = req.body.api_url || saved.api_url;
+    const api_key = apiKeyChanged ? req.body.api_key : (req.body.api_key || saved.api_key);
+    const model_name = req.body.model_name || saved.model_name;
 
-    // 未传参数时，从数据库读取已保存的配置
-    if (!provider && !api_url) {
-      const configs = await SystemConfig.findAll({ where: { config_group: 'llm_config' } });
-      const cfg = {};
-      configs.forEach(c => { cfg[c.config_key] = c.config_value; });
-      Object.assign(req.body, cfg);
-    }
+    Object.assign(req.body, {
+      provider,
+      api_url,
+      api_key,
+      model_name
+    });
     
     // 从 URL 推断 provider
     let p = req.body.provider || 'custom';

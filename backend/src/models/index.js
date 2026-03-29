@@ -38,7 +38,7 @@ const StockPrediction = sequelize.define('StockPrediction', {
   stop_loss:          { type: DataTypes.DECIMAL(10, 2) },  // 止损价
   confidence:         { type: DataTypes.FLOAT },            // 置信度 0-1
   reason:             { type: DataTypes.TEXT },             // 选股理由
-  status:             { type: DataTypes.ENUM('active', 'success', 'failed', 'abandoned'), defaultValue: 'active' },
+  status:             { type: DataTypes.ENUM('active', 'success', 'failed', 'abandoned', 'expired'), defaultValue: 'active' },
   actual_result:      { type: DataTypes.TEXT },             // 实际结果记录
   llm_model:          { type: DataTypes.STRING(50) },       // 使用的模型名称
   llm_params:         { type: DataTypes.JSON },             // 模型调用参数

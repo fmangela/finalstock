@@ -35,7 +35,9 @@ exports.runBacktest = async (req, res) => {
     let allData = [];
     try {
       allData = await DataService.getStockHistory(stock_code, 'daily', 2000, start_date, end_date);
-    } catch (e) {}
+    } catch (e) {
+      require('../utils/logger').warn(`[Backtest] 获取 ${stock_code} 历史数据失败: ${e.message}`);
+    }
 
     if (!allData || allData.length === 0) {
       return res.json({ code: 1, message: '无法获取股票数据' });
@@ -211,7 +213,7 @@ exports.runBacktest = async (req, res) => {
       stock_code, stock_name, start_date, end_date,
       initial_capital, final_capital: finalCapital,
       total_return: totalReturn,
-      strategy_id, strategy_params_json: params,
+      strategy_id, strategy_params_json: { ...params, strategy_type },
       trades_json: trades,
       equity_curve: equityCurve,
       kline_data: klineForChart,

@@ -3,17 +3,37 @@
 const { SystemConfig, StockPrediction, StockPrompt, BacktestResult, SimTask } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
-const { getTodayStr, offsetDate, dateToStr } = require('../utils/dateUtils');
+const { getTodayStr, offsetDate } = require('../utils/dateUtils');
+const backtestTaskService = require('../services/backtestTaskService');
 
 // 配置 key 前缀
 const GROUP = 'workflow';
 
+async function loadWorkflowConfig() {
+  const rows = await SystemConfig.findAll({ where: { config_group: GROUP } });
+  const cfg = {};
+  for (const r of rows) cfg[r.config_key] = r.config_value;
+  return cfg;
+}
+
+function parseJsonConfig(rawValue, fallbackValue, label) {
+  if (!rawValue) return fallbackValue;
+  try {
+    return JSON.parse(rawValue);
+  } catch (e) {
+    logger.warn(`[Workflow] 解析 ${label} 失败，回退默认值: ${e.message}`);
+    return fallbackValue;
+  }
+}
+
+function makeBacktestKey(stockCode, strategyType, params = {}) {
+  return `${stockCode}__${strategyType}__${JSON.stringify(params)}`;
+}
+
 // ── 读取自动流程配置 ──────────────────────────────────────────
 exports.getConfig = async (req, res) => {
   try {
-    const rows = await SystemConfig.findAll({ where: { config_group: GROUP } });
-    const cfg = {};
-    for (const r of rows) cfg[r.config_key] = r.config_value;
+    const cfg = await loadWorkflowConfig();
     res.json({ code: 0, data: cfg });
   } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
@@ -40,9 +60,7 @@ exports.saveConfig = async (req, res) => {
 // ── 手动触发自动选股 ──────────────────────────────────────────
 exports.runAutoPickStock = async (req, res) => {
   try {
-    const rows = await SystemConfig.findAll({ where: { config_group: GROUP } });
-    const cfg = {};
-    for (const r of rows) cfg[r.config_key] = r.config_value;
+    const cfg = await loadWorkflowConfig();
 
     const promptId = cfg.pick_prompt_id;
     const observationPeriod = cfg.pick_observation_period || '一月';
@@ -110,120 +128,192 @@ exports.runAutoPickStock = async (req, res) => {
   }
 };
 
+async function executeAutoBacktest(onProgress = () => {}) {
+  const cfg = await loadWorkflowConfig();
+
+  const historyDays = parseInt(cfg.backtest_history_days) || 0;
+  const strategies = parseJsonConfig(cfg.backtest_strategies, ['ma'], 'backtest_strategies');
+  const strategyParamRanges = parseJsonConfig(cfg.backtest_strategy_params, {}, 'backtest_strategy_params');
+  const deleteLowReturn = cfg.backtest_delete_low_return === '1';
+  const deleteLowWinRate = cfg.backtest_delete_low_win_rate === '1';
+  const lowReturnThreshold = parseFloat(cfg.backtest_low_return_threshold || '-10');
+  const lowWinRateThreshold = parseFloat(cfg.backtest_low_win_rate_threshold || '30');
+  const initialCapital = parseFloat(cfg.backtest_initial_capital || '100000');
+
+  const todayStr = getTodayStr();
+  const cutoffStr = offsetDate(todayStr, -historyDays);
+  const endDate = todayStr;
+  const startDate = offsetDate(endDate, -365);
+
+  const predictions = await StockPrediction.findAll({
+    where: {
+      status: 'active',
+      stockup_date: { [Op.gte]: cutoffStr }
+    },
+    attributes: ['stock_code', 'stock_name']
+  });
+
+  const stockMap = new Map();
+  for (const p of predictions) {
+    stockMap.set(p.stock_code, p.stock_name);
+  }
+
+  if (stockMap.size === 0) {
+    onProgress({ current: 0, total: 0, message: '没有符合条件的选股记录' });
+    return { ran: 0, skipped: 0, deleted: 0, message: '没有符合条件的选股记录' };
+  }
+
+  const existingResults = await BacktestResult.findAll({
+    attributes: ['stock_code', 'strategy_params_json'],
+    where: { stock_code: { [Op.in]: Array.from(stockMap.keys()) } }
+  });
+  const existingSet = new Set();
+  for (const r of existingResults) {
+    const rawParams = r.strategy_params_json || {};
+    const strategyType = rawParams.strategy_type || 'ma';
+    const params = { ...rawParams };
+    delete params.strategy_type;
+    existingSet.add(makeBacktestKey(r.stock_code, strategyType, params));
+  }
+
+  const plans = [];
+  for (const [stockCode, stockName] of stockMap) {
+    for (const strategyType of strategies) {
+      const paramCombinations = generateParamCombinations(strategyType, strategyParamRanges[strategyType] || {});
+      for (const params of paramCombinations) {
+        plans.push({ stockCode, stockName, strategyType, params });
+      }
+    }
+  }
+
+  onProgress({
+    current: 0,
+    total: plans.length,
+    message: `准备回测 ${stockMap.size} 只股票，共 ${plans.length} 个策略组合`
+  });
+
+  const backtestCtrl = require('./backtestController');
+  let ran = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (let index = 0; index < plans.length; index++) {
+    const plan = plans[index];
+    const dupKey = makeBacktestKey(plan.stockCode, plan.strategyType, plan.params);
+
+    onProgress({
+      current: index + 1,
+      total: plans.length,
+      message: `处理中 ${plan.stockCode} / ${plan.strategyType}（${index + 1}/${plans.length}）`
+    });
+
+    if (existingSet.has(dupKey)) {
+      skipped++;
+      continue;
+    }
+
+    const fakeReq = {
+      body: {
+        stock_code: plan.stockCode,
+        stock_name: plan.stockName,
+        start_date: startDate,
+        end_date: endDate,
+        initial_capital: initialCapital,
+        strategy_type: plan.strategyType,
+        params: plan.params
+      }
+    };
+    let result = null;
+    const fakeRes = {
+      json: (data) => { result = data; },
+      status: () => fakeRes
+    };
+
+    await backtestCtrl.runBacktest(fakeReq, fakeRes);
+
+    if (result?.code === 0 && result.data) {
+      existingSet.add(dupKey);
+      ran++;
+    } else {
+      failed++;
+      logger.warn(`[Workflow] 自动回测失败项: ${plan.stockCode}/${plan.strategyType} - ${result?.message || '未知错误'}`);
+    }
+  }
+
+  let deleted = 0;
+  if (deleteLowReturn) {
+    deleted += await BacktestResult.destroy({
+      where: { total_return: { [Op.lt]: lowReturnThreshold } }
+    });
+  }
+  if (deleteLowWinRate) {
+    deleted += await BacktestResult.destroy({
+      where: { win_rate: { [Op.lt]: lowWinRateThreshold } }
+    });
+  }
+
+  const summary = { ran, skipped, failed, deleted };
+  logger.info(`[Workflow] 自动回测完成：执行 ${ran}，跳过 ${skipped}，失败 ${failed}，删除 ${deleted}`);
+  onProgress({
+    current: plans.length,
+    total: plans.length,
+    message: `回测完成：执行 ${ran}，跳过 ${skipped}，失败 ${failed}，删除 ${deleted}`
+  });
+  return summary;
+}
+
 // ── 手动触发自动回测 ──────────────────────────────────────────
 exports.runAutoBacktest = async (req, res) => {
   try {
-    const rows = await SystemConfig.findAll({ where: { config_group: GROUP } });
-    const cfg = {};
-    for (const r of rows) cfg[r.config_key] = r.config_value;
+    const waitForCompletion = req.body?.wait_for_completion === true || req.body?.wait_for_completion === '1';
 
-    // 解析配置
-    const historyDays = parseInt(cfg.backtest_history_days) || 0;  // 0=仅当日
-    const strategies = JSON.parse(cfg.backtest_strategies || '["ma"]');
-    const strategyParamRanges = JSON.parse(cfg.backtest_strategy_params || '{}');
-    const deleteLowReturn = cfg.backtest_delete_low_return === '1';
-    const deleteLowWinRate = cfg.backtest_delete_low_win_rate === '1';
-    const lowReturnThreshold = parseFloat(cfg.backtest_low_return_threshold || '-10');
-    const lowWinRateThreshold = parseFloat(cfg.backtest_low_win_rate_threshold || '30');
-    const initialCapital = parseFloat(cfg.backtest_initial_capital || '100000');
+    const { started, task, completion } = backtestTaskService.startTask(
+      'auto-backtest',
+      (reportProgress) => executeAutoBacktest(reportProgress),
+      { trigger: waitForCompletion ? 'internal' : 'manual' }
+    );
 
-    // 确定选股日期范围
-    const todayStr = getTodayStr();
-    const cutoffStr = offsetDate(todayStr, -historyDays);
-
-    // 获取目标股票（当日及历史N天内的选股）
-    const predictions = await StockPrediction.findAll({
-      where: {
-        status: 'active',
-        stockup_date: { [Op.gte]: cutoffStr }
-      },
-      attributes: ['stock_code', 'stock_name']
-    });
-
-    // 去重
-    const stockMap = new Map();
-    for (const p of predictions) {
-      stockMap.set(p.stock_code, p.stock_name);
-    }
-
-    if (stockMap.size === 0) {
-      return res.json({ code: 0, data: { ran: 0, skipped: 0, message: '没有符合条件的选股记录' } });
-    }
-
-    // 获取已有回测结果，用于去重判断
-    const existingResults = await BacktestResult.findAll({
-      attributes: ['stock_code', 'strategy_params_json'],
-      where: { stock_code: { [Op.in]: Array.from(stockMap.keys()) } }
-    });
-    const existingSet = new Set();
-    for (const r of existingResults) {
-      const key = `${r.stock_code}__${JSON.stringify(r.strategy_params_json || {})}`;
-      existingSet.add(key);
-    }
-
-    // 回测日期范围：过去1年到今天
-    const endDate = getTodayStr();
-    const startDate = offsetDate(endDate, -365);
-
-    const backtestCtrl = require('./backtestController');
-    let ran = 0, skipped = 0;
-
-    for (const [stockCode, stockName] of stockMap) {
-      for (const strategyType of strategies) {
-        // 生成参数组合
-        const paramCombinations = generateParamCombinations(strategyType, strategyParamRanges[strategyType] || {});
-
-        for (const params of paramCombinations) {
-          const dupKey = `${stockCode}__${JSON.stringify(params)}`;
-          if (existingSet.has(dupKey)) {
-            skipped++;
-            continue;
-          }
-
-          // 执行回测
-          const fakeReq = {
-            body: {
-              stock_code: stockCode, stock_name: stockName,
-              start_date: startDate, end_date: endDate,
-              initial_capital: initialCapital,
-              strategy_type: strategyType,
-              params
-            }
-          };
-          let result = null;
-          const fakeRes = {
-            json: (d) => { result = d; },
-            status: () => fakeRes
-          };
-          await backtestCtrl.runBacktest(fakeReq, fakeRes);
-
-          if (result?.code === 0 && result.data) {
-            existingSet.add(dupKey);
-            ran++;
-          }
+    if (!waitForCompletion) {
+      return res.json({
+        code: 0,
+        data: {
+          task_id: task.id,
+          status: task.status,
+          existing: !started,
+          progress: task.progress
         }
-      }
+      });
     }
 
-    // 删除低收益/低胜率记录
-    let deleted = 0;
-    if (deleteLowReturn) {
-      const d = await BacktestResult.destroy({
-        where: { total_return: { [Op.lt]: lowReturnThreshold } }
-      });
-      deleted += d;
+    await completion;
+    const finishedTask = backtestTaskService.getTask(task.id);
+    if (!finishedTask) {
+      return res.status(500).json({ code: 500, message: '回测任务状态丢失' });
     }
-    if (deleteLowWinRate) {
-      const d = await BacktestResult.destroy({
-        where: { win_rate: { [Op.lt]: lowWinRateThreshold } }
-      });
-      deleted += d;
+    if (finishedTask.status === 'failed') {
+      return res.status(500).json({ code: 500, message: finishedTask.error || '自动回测失败' });
     }
-
-    logger.info(`[Workflow] 自动回测完成：执行 ${ran}，跳过 ${skipped}，删除 ${deleted}`);
-    res.json({ code: 0, data: { ran, skipped, deleted } });
+    res.json({ code: 0, data: finishedTask.result, task: finishedTask });
   } catch (e) {
     logger.error('[Workflow] 自动回测失败:', e);
+    res.status(500).json({ code: 500, message: e.message });
+  }
+};
+
+exports.getBacktestTaskStatus = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const task = taskId === 'active'
+      ? backtestTaskService.getActiveTask()
+      : taskId === 'latest'
+        ? backtestTaskService.getLatestTask()
+        : backtestTaskService.getTask(taskId);
+
+    if (!task) {
+      return res.status(404).json({ code: 404, message: '任务不存在' });
+    }
+    res.json({ code: 0, data: task });
+  } catch (e) {
     res.status(500).json({ code: 500, message: e.message });
   }
 };
@@ -231,9 +321,7 @@ exports.runAutoBacktest = async (req, res) => {
 // ── 手动触发自动模拟交易 ─────────────────────────────────────
 exports.runAutoSimulation = async (req, res) => {
   try {
-    const rows = await SystemConfig.findAll({ where: { config_group: GROUP } });
-    const cfg = {};
-    for (const r of rows) cfg[r.config_key] = r.config_value;
+    const cfg = await loadWorkflowConfig();
 
     const simInitialCapital = parseFloat(cfg.sim_initial_capital || '100000');
     const minReturnThreshold = parseFloat(cfg.sim_min_return_threshold || '0');

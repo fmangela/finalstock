@@ -6,6 +6,14 @@ const DataService = require('./DataService');
 const logger = require('../utils/logger');
 const { offsetDate } = require('../utils/dateUtils');
 
+function estimateLimit(startDate, endDate) {
+  if (!startDate || !endDate) return 500;
+  const start = new Date(startDate + 'T12:00:00');
+  const end = new Date(endDate + 'T12:00:00');
+  const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
+  return Math.max(60, Math.min(days + 30, 2000));
+}
+
 /**
  * 获取指定股票在日期范围内的 K 线数据
  * 优先从缓存读取，缺失部分从 API 补全并写入缓存
@@ -25,10 +33,13 @@ async function getKlines(stockCode, startDate, endDate) {
   });
 
   const cachedDates = new Set(cached.map(r => r.trade_date));
+  const cachedStart = cached[0]?.trade_date || null;
+  const cachedEnd = cached[cached.length - 1]?.trade_date || null;
 
-  // 判断是否需要补全：缓存为空或最新缓存日期早于 endDate
+  // 判断是否需要补全：缓存为空，或请求区间超出当前缓存边界
   const needFetch = cached.length === 0 ||
-    cached[cached.length - 1].trade_date < endDate;
+    cachedStart > startDate ||
+    cachedEnd < endDate;
 
   if (needFetch) {
     const fetched = await fetchFromAPI(stockCode, startDate, endDate);
@@ -139,8 +150,11 @@ async function getRecentKlines(stockCode, beforeDate, count) {
 // 从 API 拉取 K 线（通过 DataService 遵循系统配置的数据提供商）
 async function fetchFromAPI(stockCode, startDate, endDate) {
   try {
-    const data = await DataService.getStockHistory(stockCode, 'daily', 500);
-    if (data && data.length > 0) return data;
+    const limit = estimateLimit(startDate, endDate);
+    const data = await DataService.getStockHistory(stockCode, 'daily', limit, startDate, endDate);
+    if (data && data.length > 0) {
+      return data.filter(k => (!startDate || k.date >= startDate) && (!endDate || k.date <= endDate));
+    }
   } catch (e) {
     logger.warn(`[KlineService] 数据获取失败: ${e.message}`);
   }
@@ -149,19 +163,34 @@ async function fetchFromAPI(stockCode, startDate, endDate) {
 
 // 批量写入缓存（忽略重复）
 async function bulkUpsert(stockCode, klines) {
-  const records = klines.map(k => ({
-    stock_code: stockCode,
-    trade_date: k.date,
-    open: k.open, close: k.close, high: k.high, low: k.low,
-    volume: k.volume || 0, amount: k.amount || 0
-  }));
+  const deduped = new Map();
+  for (const k of klines) {
+    if (!k?.date) continue;
+    deduped.set(k.date, {
+      stock_code: stockCode,
+      trade_date: k.date,
+      open: k.open,
+      close: k.close,
+      high: k.high,
+      low: k.low,
+      volume: k.volume || 0,
+      amount: k.amount || 0
+    });
+  }
+  const records = Array.from(deduped.values());
+  if (records.length === 0) return;
+
+  const chunkSize = 200;
   try {
-    // 逐条 upsert，避免批量插入时唯一键冲突
-    for (const r of records) {
-      await KlineCache.upsert(r);
+    for (let i = 0; i < records.length; i += chunkSize) {
+      const chunk = records.slice(i, i + chunkSize);
+      await KlineCache.bulkCreate(chunk, {
+        updateOnDuplicate: ['open', 'close', 'high', 'low', 'volume', 'amount']
+      });
     }
   } catch (e) {
     logger.error(`[KlineService] 缓存写入失败: ${e.message}`);
+    throw e;
   }
 }
 

@@ -87,7 +87,13 @@
             <el-button type="success" :loading="running.backtest" @click="runBacktest">立即执行回测</el-button>
           </el-form-item>
         </el-form>
-        <el-alert v-if="result.backtest" :title="result.backtest" type="success" show-icon style="margin-top:12px;max-width:800px" />
+        <el-alert
+          v-if="backtestStatusTitle"
+          :title="backtestStatusTitle"
+          :type="backtestStatusType"
+          show-icon
+          style="margin-top:12px;max-width:800px"
+        />
       </el-tab-pane>
 
       <!-- ── 第三步：自动模拟交易 ── -->
@@ -243,7 +249,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Close, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { workflowApi } from '@/api/index.js'
@@ -285,6 +291,32 @@ const cfg = reactive({
 
 const running = reactive({ pick: false, backtest: false, simulation: false })
 const result = reactive({ pick: '', backtest: '', simulation: '' })
+const backtestTask = ref(null)
+let backtestPollTimer = null
+
+const backtestStatusType = computed(() => {
+  if (!backtestTask.value) return result.backtest ? 'success' : 'info'
+  if (backtestTask.value.status === 'failed') return 'error'
+  if (backtestTask.value.status === 'success') return 'success'
+  return 'info'
+})
+
+const backtestStatusTitle = computed(() => {
+  if (!backtestTask.value) return result.backtest
+  const progress = backtestTask.value.progress || {}
+  const progressText = progress.total ? `（${Math.min(progress.current || 0, progress.total)}/${progress.total}）` : ''
+  if (backtestTask.value.status === 'running' || backtestTask.value.status === 'queued') {
+    return `${progress.message || '后台回测执行中'}${progressText}`
+  }
+  if (backtestTask.value.status === 'failed') {
+    return `回测失败：${backtestTask.value.error || '未知错误'}`
+  }
+  if (backtestTask.value.result) {
+    const { ran = 0, skipped = 0, failed = 0, deleted = 0 } = backtestTask.value.result
+    return `回测完成：执行 ${ran} 次，跳过重复 ${skipped} 次，失败 ${failed} 次，删除低质量 ${deleted} 条`
+  }
+  return result.backtest
+})
 
 // 日历计算属性
 const calStartOffset = computed(() => {
@@ -330,6 +362,51 @@ async function loadCalendar() {
   }
 }
 
+function stopBacktestPolling() {
+  if (backtestPollTimer) {
+    clearTimeout(backtestPollTimer)
+    backtestPollTimer = null
+  }
+}
+
+async function pollBacktestTask(taskId, silent = false) {
+  stopBacktestPolling()
+  try {
+    const res = await workflowApi.getBacktestTask(taskId)
+    if (res.code !== 0) throw new Error(res.message || '获取任务状态失败')
+    backtestTask.value = res.data
+
+    if (res.data.status === 'queued' || res.data.status === 'running') {
+      running.backtest = true
+      backtestPollTimer = setTimeout(() => pollBacktestTask(taskId, true), 1500)
+      return
+    }
+
+    running.backtest = false
+    if (res.data.status === 'success') {
+      result.backtest = backtestStatusTitle.value
+    }
+  } catch (e) {
+    running.backtest = false
+    if (!silent) ElMessage.error('获取回测任务状态失败: ' + e.message)
+  }
+}
+
+async function loadActiveBacktestTask() {
+  try {
+    const res = await workflowApi.getBacktestTask('active')
+    if (res.code === 0 && res.data) {
+      backtestTask.value = res.data
+      if (res.data.status === 'queued' || res.data.status === 'running') {
+        running.backtest = true
+        backtestPollTimer = setTimeout(() => pollBacktestTask(res.data.id, true), 1500)
+      }
+    }
+  } catch (e) {
+    // 页面首次加载时没有活动任务属于正常情况
+  }
+}
+
 function calendarPrev() {
   calMonth.value--
   if (calMonth.value < 1) { calMonth.value = 12; calYear.value-- }
@@ -358,13 +435,25 @@ onMounted(async () => {
         if (data[k] !== undefined) cfg[k] = numKeys.includes(k) ? parseFloat(data[k]) : data[k]
       })
       if (data.backtest_strategies) {
-        try { selectedStrategies.value = JSON.parse(data.backtest_strategies) } catch {}
+        try {
+          selectedStrategies.value = JSON.parse(data.backtest_strategies)
+        } catch (e) {
+          console.warn('解析回测策略配置失败:', e)
+        }
       }
       if (data.backtest_strategy_params) {
-        try { Object.assign(strategyParamRanges, JSON.parse(data.backtest_strategy_params)) } catch {}
+        try {
+          Object.assign(strategyParamRanges, JSON.parse(data.backtest_strategy_params))
+        } catch (e) {
+          console.warn('解析回测参数范围失败:', e)
+        }
       }
       if (data.auto_timeslots) {
-        try { autoTimeslots.value = JSON.parse(data.auto_timeslots) } catch {}
+        try {
+          autoTimeslots.value = JSON.parse(data.auto_timeslots)
+        } catch (e) {
+          console.warn('解析自动流程时间点失败:', e)
+        }
       }
     }
     if (promptRes.code === 0) prompts.value = promptRes.data
@@ -378,6 +467,11 @@ onMounted(async () => {
 
   // 加载交易日历
   loadCalendar()
+  loadActiveBacktestTask()
+})
+
+onBeforeUnmount(() => {
+  stopBacktestPolling()
 })
 
 async function saveConfig() {
@@ -430,17 +524,21 @@ async function runBacktest() {
   if (selectedStrategies.value.length === 0) { ElMessage.warning('请至少选择一个回测策略'); return }
   running.backtest = true
   result.backtest = ''
+  backtestTask.value = null
   try {
     await saveConfig()
     const res = await workflowApi.runBacktest()
     if (res.code === 0) {
-      result.backtest = `回测完成：执行 ${res.data.ran} 次，跳过重复 ${res.data.skipped} 次，删除低质量 ${res.data.deleted} 条`
-      ElMessage.success(result.backtest)
+      const taskId = res.data.task_id
+      result.backtest = res.data.existing ? '已有回测任务正在执行，已切换到当前任务进度。' : '回测任务已启动，正在后台执行。'
+      await pollBacktestTask(taskId)
     } else ElMessage.error(res.message)
   } catch (e) {
     ElMessage.error('执行失败: ' + e.message)
   } finally {
-    running.backtest = false
+    if (!backtestTask.value || (backtestTask.value.status !== 'queued' && backtestTask.value.status !== 'running')) {
+      running.backtest = false
+    }
   }
 }
 
